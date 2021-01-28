@@ -1810,11 +1810,23 @@ impl<T: EventListener, G> Handler for Term<T, G> {
         Some(Box::new(sixel::Parser::new(params, palette)))
     }
 
-    fn insert_graphic(&mut self, mut graphic: GraphicData, palette: Vec<Rgb>) {
-        // Store last palette if it is shared.
-        if !self.mode.contains(TermMode::SIXEL_PRIV_PALETTE) {
-            self.grid.graphics_mut().sixel_shared_palette = Some(palette);
+    fn insert_graphic(&mut self, graphic: GraphicData, palette: Option<Vec<Rgb>>) {
+        // Store last palette if we receive a new one, and it is shared.
+        if let Some(palette) = palette {
+            if !self.mode.contains(TermMode::SIXEL_PRIV_PALETTE) {
+                self.grid.graphics_mut().sixel_shared_palette = Some(palette);
+            }
         }
+
+        let mut graphic = match graphic.resized(
+            self.cell_width,
+            self.cell_height,
+            self.cell_width * self.cols().0,
+            self.cell_height * self.screen_lines().0,
+        ) {
+            Some(graphic) => graphic,
+            None => return,
+        };
 
         // The new graphic is split in multiple fragments if its height is
         // greater than `ROWS_PER_GRAPHIC`
@@ -1848,6 +1860,7 @@ impl<T: EventListener, G> Handler for Term<T, G> {
                     height: next_height,
                     color_type: graphic.color_type,
                     pixels: next_pixels,
+                    resize: None,
                 });
             } else {
                 next_fragment = None;

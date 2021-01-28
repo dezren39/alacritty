@@ -1,12 +1,15 @@
 //! This module implements the logic to manage graphic items included in a
 //! `Grid` instance.
 
+pub mod osc1337;
 pub mod sixel;
 
+use std::cmp::min;
 use std::collections::BTreeMap;
 use std::mem;
 use std::ops::{Add, Bound, RangeBounds, RangeInclusive, Sub};
 
+use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 
 use crate::index::{Column, Line};
@@ -16,7 +19,7 @@ use crate::term::SizeInfo;
 /// Pixels rows in a single graphic item.
 pub const ROWS_PER_GRAPHIC: usize = 1000;
 
-/// Max allowed dimensions for the graphic, in pixels.
+/// Max allowed dimensions (width, height) for the graphic, in pixels.
 const MAX_GRAPHIC_DIMENSIONS: (usize, usize) = (4096, 4096);
 
 /// Specifies the format of the pixel data.
@@ -40,6 +43,32 @@ impl ColorType {
     }
 }
 
+/// Unit to specify a dimension to resize the graphic.
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Copy, Debug)]
+pub enum ResizeParameter {
+    /// Dimension is computed from the original graphic dimensions.
+    Auto,
+
+    /// Size is specified in number of grid cells.
+    Cells(u32),
+
+    /// Size is specified in number pixels.
+    Pixels(u32),
+
+    /// Size is specified in a percent of the window.
+    WindowPercent(u32),
+}
+
+/// Dimensions to resize a graphic.
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Copy, Debug)]
+pub struct ResizeCommand {
+    pub width: ResizeParameter,
+
+    pub height: ResizeParameter,
+
+    pub preserve_aspect_ratio: bool,
+}
+
 /// Defines a single graphic read from the PTY.
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug)]
 pub struct GraphicData {
@@ -60,6 +89,9 @@ pub struct GraphicData {
 
     /// Pixels data.
     pub pixels: Vec<u8>,
+
+    /// Render graphic in a different size.
+    pub resize: Option<ResizeCommand>,
 }
 
 impl GraphicData {
@@ -79,7 +111,130 @@ impl GraphicData {
             height,
             color_type,
             pixels: vec![0; width * height * color_type.bytes_per_pixel()],
+            resize: None,
         }
+    }
+
+    /// Create an instance from [`image::DynamicImage`].
+    pub fn from_dynamic_image(column: Column, line: GraphicsLine, image: DynamicImage) -> Self {
+        let color_type;
+        let width;
+        let height;
+        let pixels;
+
+        match image {
+            DynamicImage::ImageRgb8(image) => {
+                color_type = ColorType::RGB;
+                width = image.width() as usize;
+                height = image.height() as usize;
+                pixels = image.into_raw();
+            },
+
+            DynamicImage::ImageRgba8(image) => {
+                color_type = ColorType::RGBA;
+                width = image.width() as usize;
+                height = image.height() as usize;
+                pixels = image.into_raw();
+            },
+
+            _ => {
+                // Non-RGB image. Convert it to RGBA.
+                let image = image.into_rgba8();
+                color_type = ColorType::RGBA;
+                width = image.width() as usize;
+                height = image.height() as usize;
+                pixels = image.into_raw();
+            },
+        }
+
+        GraphicData { column, line, width, height, color_type, pixels, resize: None }
+    }
+
+    /// Resize the graphic according to the dimensions in the `resize` field.
+    pub fn resized(
+        self,
+        cell_width: usize,
+        cell_height: usize,
+        view_width: usize,
+        view_height: usize,
+    ) -> Option<Self> {
+        let resize = match self.resize {
+            Some(resize) => resize,
+            None => return Some(self),
+        };
+
+        if (resize.width == ResizeParameter::Auto && resize.height == ResizeParameter::Auto)
+            || self.height == 0
+            || self.width == 0
+        {
+            return Some(self);
+        }
+
+        let mut width = match resize.width {
+            ResizeParameter::Auto => 1,
+            ResizeParameter::Pixels(n) => n as usize,
+            ResizeParameter::Cells(n) => n as usize * cell_width,
+            ResizeParameter::WindowPercent(n) => n as usize * view_width / 100,
+        };
+
+        let mut height = match resize.height {
+            ResizeParameter::Auto => 1,
+            ResizeParameter::Pixels(n) => n as usize,
+            ResizeParameter::Cells(n) => n as usize * cell_height,
+            ResizeParameter::WindowPercent(n) => n as usize * view_height / 100,
+        };
+
+        if width == 0 || height == 0 {
+            return None;
+        }
+
+        // Compute "auto" dimensions.
+        if resize.width == ResizeParameter::Auto {
+            width = self.width * height / self.height;
+        }
+
+        if resize.height == ResizeParameter::Auto {
+            height = self.height * width / self.width;
+        }
+
+        // Limit size to MAX_GRAPHIC_DIMENSIONS.
+        width = min(width, MAX_GRAPHIC_DIMENSIONS.0);
+        height = min(height, MAX_GRAPHIC_DIMENSIONS.1);
+
+        log::trace!(
+            target: "graphics",
+            "Resize new graphic to width={}, height={}",
+            width,
+            height,
+        );
+
+        // Create a new DynamicImage to resize the graphic.
+        let dynimage = match self.color_type {
+            ColorType::RGB => {
+                let buffer =
+                    image::RgbImage::from_raw(self.width as u32, self.height as u32, self.pixels)?;
+                DynamicImage::ImageRgb8(buffer)
+            },
+
+            ColorType::RGBA => {
+                let buffer =
+                    image::RgbaImage::from_raw(self.width as u32, self.height as u32, self.pixels)?;
+                DynamicImage::ImageRgba8(buffer)
+            },
+        };
+
+        // Finally, use `resize` or `resize_exact` to make the new image.
+        let width = width as u32;
+        let height = height as u32;
+        let filter = image::imageops::FilterType::Triangle;
+
+        let new_image = if resize.preserve_aspect_ratio {
+            dynimage.resize(width, height, filter)
+        } else {
+            dynimage.resize_exact(width, height, filter)
+        };
+
+        Some(Self::from_dynamic_image(self.column, self.line, new_image))
     }
 }
 

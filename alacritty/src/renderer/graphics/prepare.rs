@@ -98,6 +98,7 @@ pub(super) fn attach_graphics<T>(
                 height,
                 color_type: new_graphic.color_type,
                 pixels,
+                resize: None,
             };
 
             let texture = texture_generator();

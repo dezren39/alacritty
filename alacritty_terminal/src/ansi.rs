@@ -9,7 +9,7 @@ use vte::{Params, ParamsIter};
 
 use alacritty_config_derive::ConfigDeserialize;
 
-use crate::graphics::{sixel, GraphicData};
+use crate::graphics::{osc1337, sixel, GraphicData};
 use crate::index::{Column, Line};
 use crate::term::color::Rgb;
 
@@ -341,7 +341,7 @@ pub trait Handler {
     }
 
     /// Insert a new graphic item.
-    fn insert_graphic(&mut self, _data: GraphicData, _palette: Vec<Rgb>) {}
+    fn insert_graphic(&mut self, _data: GraphicData, _palette: Option<Vec<Rgb>>) {}
 }
 
 /// Terminal cursor configuration.
@@ -827,7 +827,7 @@ where
     fn unhook(&mut self) {
         if let Some(parser) = self.state.sixel_parser.take() {
             match parser.finish() {
-                Ok((data, palette)) => self.handler.insert_graphic(data, palette),
+                Ok((graphic, palette)) => self.handler.insert_graphic(graphic, Some(palette)),
                 Err(err) => log::warn!("Failed to parse Sixel data: {}", err),
             }
 
@@ -982,6 +982,13 @@ where
 
             // Reset text cursor color.
             b"112" => self.handler.reset_color(NamedColor::Cursor as usize),
+
+            // iTerm2 Images Protocol
+            b"1337" => {
+                if let Some(graphic) = osc1337::parse(params) {
+                    self.handler.insert_graphic(graphic, None);
+                }
+            },
 
             _ => unhandled(params),
         }
