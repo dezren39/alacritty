@@ -55,12 +55,12 @@ const SELECTION_SCROLLING_STEP: f64 = 20.;
 ///
 /// An escape sequence may be emitted in case specific keys or key combinations
 /// are activated.
-pub struct Processor<T: EventListener, A: ActionContext<T>> {
+pub struct Processor<T: EventListener, G, A: ActionContext<T, G>> {
     pub ctx: A,
-    _phantom: PhantomData<T>,
+    _phantom: PhantomData<(T, G)>,
 }
 
-pub trait ActionContext<T: EventListener> {
+pub trait ActionContext<T: EventListener, G> {
     fn write_to_pty<B: Into<Cow<'static, [u8]>>>(&mut self, _data: B) {}
     fn mark_dirty(&mut self) {}
     fn size_info(&self) -> SizeInfo;
@@ -79,8 +79,8 @@ pub trait ActionContext<T: EventListener> {
     fn scroll(&mut self, _scroll: Scroll) {}
     fn window(&self) -> &Window;
     fn window_mut(&mut self) -> &mut Window;
-    fn terminal(&self) -> &Term<T>;
-    fn terminal_mut(&mut self) -> &mut Term<T>;
+    fn terminal(&self) -> &Term<T, G>;
+    fn terminal_mut(&mut self) -> &mut Term<T, G>;
     fn spawn_new_instance(&mut self) {}
     fn change_font_size(&mut self, _delta: f32) {}
     fn reset_font_size(&mut self) {}
@@ -114,22 +114,22 @@ pub trait ActionContext<T: EventListener> {
     fn toggle_vi_mode(&mut self) {}
 }
 
-trait Execute<T: EventListener> {
-    fn execute<A: ActionContext<T>>(&self, ctx: &mut A);
+trait Execute<T: EventListener, G> {
+    fn execute<A: ActionContext<T, G>>(&self, ctx: &mut A);
 }
 
-impl<T, U: EventListener> Execute<U> for Binding<T> {
+impl<T, U: EventListener, G> Execute<U, G> for Binding<T> {
     /// Execute the action associate with this binding.
     #[inline]
-    fn execute<A: ActionContext<U>>(&self, ctx: &mut A) {
+    fn execute<A: ActionContext<U, G>>(&self, ctx: &mut A) {
         self.action.execute(ctx)
     }
 }
 
 impl Action {
-    fn toggle_selection<T, A>(ctx: &mut A, ty: SelectionType)
+    fn toggle_selection<T, G, A>(ctx: &mut A, ty: SelectionType)
     where
-        A: ActionContext<T>,
+        A: ActionContext<T, G>,
         T: EventListener,
     {
         let cursor_point = ctx.terminal().vi_mode_cursor.point;
@@ -142,9 +142,9 @@ impl Action {
     }
 }
 
-impl<T: EventListener> Execute<T> for Action {
+impl<T: EventListener, G> Execute<T, G> for Action {
     #[inline]
-    fn execute<A: ActionContext<T>>(&self, ctx: &mut A) {
+    fn execute<A: ActionContext<T, G>>(&self, ctx: &mut A) {
         match *self {
             Action::Esc(ref s) => {
                 ctx.on_typing_start();
@@ -360,7 +360,7 @@ impl<T: EventListener> Execute<T> for Action {
     }
 }
 
-fn paste<T: EventListener, A: ActionContext<T>>(ctx: &mut A, contents: &str) {
+fn paste<T: EventListener, G, A: ActionContext<T, G>>(ctx: &mut A, contents: &str) {
     if ctx.search_active() {
         for c in contents.chars() {
             ctx.search_input(c);
@@ -399,7 +399,7 @@ impl From<MouseState> for CursorIcon {
     }
 }
 
-impl<T: EventListener, A: ActionContext<T>> Processor<T, A> {
+impl<T: EventListener, G, A: ActionContext<T, G>> Processor<T, G, A> {
     pub fn new(ctx: A) -> Self {
         Self { ctx, _phantom: Default::default() }
     }
@@ -1100,7 +1100,7 @@ mod tests {
     impl EventListener for MockEventProxy {}
 
     struct ActionContext<'a, T> {
-        pub terminal: &'a mut Term<T>,
+        pub terminal: &'a mut Term<T, ()>,
         pub selection: &'a mut Option<Selection>,
         pub size_info: &'a SizeInfo,
         pub mouse: &'a mut Mouse,
@@ -1112,7 +1112,7 @@ mod tests {
         config: &'a Config,
     }
 
-    impl<'a, T: EventListener> super::ActionContext<T> for ActionContext<'a, T> {
+    impl<'a, T: EventListener> super::ActionContext<T, ()> for ActionContext<'a, T> {
         fn search_next(
             &mut self,
             _origin: Point<usize>,
@@ -1130,11 +1130,11 @@ mod tests {
             false
         }
 
-        fn terminal(&self) -> &Term<T> {
+        fn terminal(&self) -> &Term<T, ()> {
             &self.terminal
         }
 
-        fn terminal_mut(&mut self) -> &mut Term<T> {
+        fn terminal_mut(&mut self) -> &mut Term<T, ()> {
             &mut self.terminal
         }
 

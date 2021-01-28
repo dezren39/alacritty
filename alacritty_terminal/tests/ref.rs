@@ -98,7 +98,7 @@ fn ref_test(dir: &Path) {
     let serialized_cfg = fs::read_to_string(dir.join("config.json")).unwrap();
 
     let size: SizeInfo = json::from_str(&serialized_size).unwrap();
-    let grid: Grid<Cell> = json::from_str(&serialized_grid).unwrap();
+    let grid: Grid<Cell, ()> = json::from_str(&serialized_grid).unwrap();
     let ref_config: RefConfig = json::from_str(&serialized_cfg).unwrap();
 
     let mut config = MockConfig::default();

@@ -47,7 +47,7 @@ impl RegexSearch {
     }
 }
 
-impl<T> Term<T> {
+impl<T, G> Term<T, G> {
     /// Get next search match in the specified direction.
     pub fn search_next(
         &self,
@@ -279,7 +279,7 @@ impl<T> Term<T> {
     /// Advance a grid iterator over fullwidth characters.
     fn skip_fullwidth<'a>(
         &self,
-        iter: &'a mut GridIterator<'_, Cell>,
+        iter: &'a mut GridIterator<'_, Cell, G>,
         cell: &mut &'a Cell,
         direction: Direction,
     ) {
@@ -426,21 +426,21 @@ impl<T> Term<T> {
 }
 
 /// Iterator over regex matches.
-pub struct RegexIter<'a, T> {
+pub struct RegexIter<'a, T, G> {
     point: Point<usize>,
     end: Point<usize>,
     direction: Direction,
     dfas: &'a RegexSearch,
-    term: &'a Term<T>,
+    term: &'a Term<T, G>,
     done: bool,
 }
 
-impl<'a, T> RegexIter<'a, T> {
+impl<'a, T, G> RegexIter<'a, T, G> {
     pub fn new(
         start: Point<usize>,
         end: Point<usize>,
         direction: Direction,
-        term: &'a Term<T>,
+        term: &'a Term<T, G>,
         dfas: &'a RegexSearch,
     ) -> Self {
         Self { point: start, done: false, end, direction, term, dfas }
@@ -465,7 +465,7 @@ impl<'a, T> RegexIter<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for RegexIter<'a, T> {
+impl<'a, T, G> Iterator for RegexIter<'a, T, G> {
     type Item = Match;
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -7,6 +7,7 @@ use std::ops::{Bound, Deref, Index, IndexMut, Range, RangeBounds, RangeInclusive
 use serde::{Deserialize, Serialize};
 
 use crate::ansi::{CharsetIndex, StandardCharset};
+use crate::graphics::Graphics;
 use crate::index::{Column, IndexRange, Line, Point};
 use crate::term::cell::{Flags, ResetDiscriminant};
 
@@ -106,7 +107,7 @@ pub enum Scroll {
 ///                          cols
 /// ```
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Grid<T> {
+pub struct Grid<T, G> {
     /// Current cursor for writing data.
     #[serde(skip)]
     pub cursor: Cursor<T>,
@@ -134,16 +135,21 @@ pub struct Grid<T> {
 
     /// Maximum number of lines in history.
     max_scroll_limit: usize,
+
+    /// Graphics in the grid.
+    #[serde(skip)]
+    graphics: Graphics<G>,
 }
 
-impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
-    pub fn new(lines: Line, cols: Column, max_scroll_limit: usize) -> Grid<T> {
+impl<T: GridCell + Default + PartialEq + Clone, G> Grid<T, G> {
+    pub fn new(lines: Line, cols: Column, max_scroll_limit: usize) -> Grid<T, G> {
         Grid {
             raw: Storage::with_capacity(lines, cols),
             max_scroll_limit,
             display_offset: 0,
             saved_cursor: Cursor::default(),
             cursor: Cursor::default(),
+            graphics: Graphics::default(),
             lines,
             cols,
         }
@@ -327,6 +333,7 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
 
         // Clear the viewport.
         self.scroll_up(&region, positions);
+        self.graphics.move_base_position(positions.0 as isize, self.history_size());
 
         // Reset rotated lines.
         for i in positions.0..self.lines.0 {
@@ -350,10 +357,13 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
         for row in 0..self.raw.len() {
             self.raw[row].reset(&self.cursor.template);
         }
+
+        // Remove all data related to the graphics in the grid.
+        self.graphics.clear();
     }
 }
 
-impl<T> Grid<T> {
+impl<T, G> Grid<T, G> {
     /// Reset a visible region within the grid.
     pub fn reset_region<D, R: RangeBounds<Line>>(&mut self, bounds: R)
     where
@@ -426,6 +436,7 @@ impl<T> Grid<T> {
     pub fn clear_history(&mut self) {
         // Explicitly purge all lines from history.
         self.raw.shrink_lines(self.history_size());
+        self.graphics.clear_range(..Line(0));
     }
 
     /// This is used only for initializing after loading ref-tests.
@@ -448,13 +459,13 @@ impl<T> Grid<T> {
     }
 
     #[inline]
-    pub fn iter_from(&self, point: Point<usize>) -> GridIterator<'_, T> {
+    pub fn iter_from(&self, point: Point<usize>) -> GridIterator<'_, T, G> {
         GridIterator { grid: self, point }
     }
 
     /// Iterator over all visible cells.
     #[inline]
-    pub fn display_iter(&self) -> DisplayIter<'_, T> {
+    pub fn display_iter(&self) -> DisplayIter<'_, T, G> {
         let start = Point::new(self.display_offset + self.lines.0, self.cols() - 1);
         let end = Point::new(self.display_offset, self.cols());
 
@@ -482,9 +493,19 @@ impl<T> Grid<T> {
         let point = self.cursor.point;
         &mut self[point.line][point.column]
     }
+
+    #[inline]
+    pub fn graphics(&self) -> &Graphics<G> {
+        &self.graphics
+    }
+
+    #[inline]
+    pub fn graphics_mut(&mut self) -> &mut Graphics<G> {
+        &mut self.graphics
+    }
 }
 
-impl<T: PartialEq> PartialEq for Grid<T> {
+impl<T: PartialEq, G> PartialEq for Grid<T, G> {
     fn eq(&self, other: &Self) -> bool {
         // Compare struct fields and check result of grid comparison.
         self.raw.eq(&other.raw)
@@ -494,7 +515,7 @@ impl<T: PartialEq> PartialEq for Grid<T> {
     }
 }
 
-impl<T> Index<Line> for Grid<T> {
+impl<T, G> Index<Line> for Grid<T, G> {
     type Output = Row<T>;
 
     #[inline]
@@ -503,14 +524,14 @@ impl<T> Index<Line> for Grid<T> {
     }
 }
 
-impl<T> IndexMut<Line> for Grid<T> {
+impl<T, G> IndexMut<Line> for Grid<T, G> {
     #[inline]
     fn index_mut(&mut self, index: Line) -> &mut Row<T> {
         &mut self.raw[index]
     }
 }
 
-impl<T> Index<usize> for Grid<T> {
+impl<T, G> Index<usize> for Grid<T, G> {
     type Output = Row<T>;
 
     #[inline]
@@ -519,14 +540,14 @@ impl<T> Index<usize> for Grid<T> {
     }
 }
 
-impl<T> IndexMut<usize> for Grid<T> {
+impl<T, G> IndexMut<usize> for Grid<T, G> {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut Row<T> {
         &mut self.raw[index]
     }
 }
 
-impl<T> Index<Point<usize>> for Grid<T> {
+impl<T, G> Index<Point<usize>> for Grid<T, G> {
     type Output = T;
 
     #[inline]
@@ -535,14 +556,14 @@ impl<T> Index<Point<usize>> for Grid<T> {
     }
 }
 
-impl<T> IndexMut<Point<usize>> for Grid<T> {
+impl<T, G> IndexMut<Point<usize>> for Grid<T, G> {
     #[inline]
     fn index_mut(&mut self, point: Point<usize>) -> &mut T {
         &mut self[point.line][point.column]
     }
 }
 
-impl<T> Index<Point> for Grid<T> {
+impl<T, G> Index<Point> for Grid<T, G> {
     type Output = T;
 
     #[inline]
@@ -551,7 +572,7 @@ impl<T> Index<Point> for Grid<T> {
     }
 }
 
-impl<T> IndexMut<Point> for Grid<T> {
+impl<T, G> IndexMut<Point> for Grid<T, G> {
     #[inline]
     fn index_mut(&mut self, point: Point) -> &mut T {
         &mut self[point.line][point.column]
@@ -576,7 +597,7 @@ pub trait Dimensions {
     }
 }
 
-impl<G> Dimensions for Grid<G> {
+impl<T, G> Dimensions for Grid<T, G> {
     #[inline]
     fn total_lines(&self) -> usize {
         self.raw.len()
@@ -624,15 +645,15 @@ impl<T, L> Deref for Indexed<T, L> {
 }
 
 /// Grid cell iterator.
-pub struct GridIterator<'a, T> {
+pub struct GridIterator<'a, T, G> {
     /// Immutable grid reference.
-    grid: &'a Grid<T>,
+    grid: &'a Grid<T, G>,
 
     /// Current position of the iterator within the grid.
     point: Point<usize>,
 }
 
-impl<'a, T> GridIterator<'a, T> {
+impl<'a, T, G> GridIterator<'a, T, G> {
     /// Current iteratior position.
     pub fn point(&self) -> Point<usize> {
         self.point
@@ -644,7 +665,7 @@ impl<'a, T> GridIterator<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for GridIterator<'a, T> {
+impl<'a, T, G> Iterator for GridIterator<'a, T, G> {
     type Item = Indexed<&'a T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -667,7 +688,7 @@ pub trait BidirectionalIterator: Iterator {
     fn prev(&mut self) -> Option<Self::Item>;
 }
 
-impl<'a, T> BidirectionalIterator for GridIterator<'a, T> {
+impl<'a, T, G> BidirectionalIterator for GridIterator<'a, T, G> {
     fn prev(&mut self) -> Option<Self::Item> {
         let last_col = self.grid.cols() - 1;
 
@@ -686,7 +707,7 @@ impl<'a, T> BidirectionalIterator for GridIterator<'a, T> {
     }
 }
 
-pub type DisplayIter<'a, T> =
-    Map<TakeWhile<GridIterator<'a, T>, DisplayIterTakeFun<'a, T>>, DisplayIterMapFun<'a, T>>;
+pub type DisplayIter<'a, T, G> =
+    Map<TakeWhile<GridIterator<'a, T, G>, DisplayIterTakeFun<'a, T>>, DisplayIterMapFun<'a, T>>;
 type DisplayIterTakeFun<'a, T> = Box<dyn Fn(&Indexed<&'a T>) -> bool>;
 type DisplayIterMapFun<'a, T> = Box<dyn FnMut(Indexed<&'a T>) -> Indexed<&'a T, Line>>;

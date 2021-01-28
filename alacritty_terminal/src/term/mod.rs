@@ -9,13 +9,15 @@ use bitflags::bitflags;
 use log::{debug, trace};
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthChar;
+use vte::Params;
 
 use crate::ansi::{
     self, Attr, CharsetIndex, Color, CursorShape, CursorStyle, Handler, NamedColor, StandardCharset,
 };
 use crate::config::Config;
 use crate::event::{Event, EventListener};
-use crate::grid::{Dimensions, DisplayIter, Grid, Scroll};
+use crate::graphics::{sixel, GraphicData, Graphics, GraphicsLine, ROWS_PER_GRAPHIC};
+use crate::grid::{Dimensions, DisplayIter, Grid, GridCell, Scroll};
 use crate::index::{self, Boundary, Column, Direction, IndexRange, Line, Point, Side};
 use crate::selection::{Selection, SelectionRange};
 use crate::term::cell::{Cell, Flags, LineLength};
@@ -62,6 +64,8 @@ bitflags! {
         const ALTERNATE_SCROLL    = 0b0000_1000_0000_0000_0000;
         const VI                  = 0b0001_0000_0000_0000_0000;
         const URGENCY_HINTS       = 0b0010_0000_0000_0000_0000;
+        const SIXEL_SCROLLING     = 0b0100_0000_0000_0000_0000;
+        const SIXEL_PRIV_PALETTE  = 0b1000_0000_0000_0000_0000;
         const ANY                 = std::u32::MAX;
     }
 }
@@ -72,6 +76,8 @@ impl Default for TermMode {
             | TermMode::LINE_WRAP
             | TermMode::ALTERNATE_SCROLL
             | TermMode::URGENCY_HINTS
+            | TermMode::SIXEL_SCROLLING
+            | TermMode::SIXEL_PRIV_PALETTE
     }
 }
 
@@ -214,7 +220,7 @@ impl SizeInfo {
     }
 }
 
-pub struct Term<T> {
+pub struct Term<T, G> {
     /// Terminal focus controlling the cursor shape.
     pub is_focused: bool,
 
@@ -227,13 +233,13 @@ pub struct Term<T> {
     ///
     /// Tracks the screen buffer currently in use. While the alternate screen buffer is active,
     /// this will be the alternate grid. Otherwise it is the primary screen buffer.
-    grid: Grid<Cell>,
+    grid: Grid<Cell, G>,
 
     /// Currently inactive grid.
     ///
     /// Opposite of the active grid. While the alternate screen buffer is active, this will be the
     /// primary grid. Otherwise it is the alternate screen buffer.
-    inactive_grid: Grid<Cell>,
+    inactive_grid: Grid<Cell, G>,
 
     /// Index into `charsets`, pointing to what ASCII is currently being mapped to.
     active_charset: CharsetIndex,
@@ -278,7 +284,7 @@ pub struct Term<T> {
     cell_height: usize,
 }
 
-impl<T> Term<T> {
+impl<T, G> Term<T, G> {
     #[inline]
     pub fn scroll_display(&mut self, scroll: Scroll)
     where
@@ -288,7 +294,7 @@ impl<T> Term<T> {
         self.event_proxy.send_event(Event::MouseCursorDirty);
     }
 
-    pub fn new<C>(config: &Config<C>, size: SizeInfo, event_proxy: T) -> Term<T> {
+    pub fn new<C>(config: &Config<C>, size: SizeInfo, event_proxy: T) -> Self {
         let num_cols = size.cols;
         let num_lines = size.screen_lines;
 
@@ -454,7 +460,7 @@ impl<T> Term<T> {
 
     /// Terminal content required for rendering.
     #[inline]
-    pub fn renderable_content(&self) -> RenderableContent<'_>
+    pub fn renderable_content(&self) -> RenderableContent<'_, G>
     where
         T: EventListener,
     {
@@ -465,14 +471,19 @@ impl<T> Term<T> {
     ///
     /// This is a bit of a hack; when the window is closed, the event processor
     /// serializes the grid state to a file.
-    pub fn grid(&self) -> &Grid<Cell> {
+    pub fn grid(&self) -> &Grid<Cell, G> {
         &self.grid
     }
 
     /// Mutable access for swapping out the grid during tests.
     #[cfg(test)]
-    pub fn grid_mut(&mut self) -> &mut Grid<Cell> {
+    pub fn grid_mut(&mut self) -> &mut Grid<Cell, G> {
         &mut self.grid
+    }
+
+    /// Mutable access for updating graphic data.
+    pub fn graphics_mut(&mut self) -> &mut Graphics<G> {
+        self.grid.graphics_mut()
     }
 
     /// Resize terminal to new dimensions.
@@ -813,9 +824,45 @@ impl<T> Term<T> {
 
         cursor_cell
     }
+
+    /// Fill the specified rectangular area with a template cell.
+    ///
+    /// This function is inspired by the [`DECERA`] control function.
+    ///
+    /// [`DECERA`]: https://vt100.net/docs/vt510-rm/DECERA.html
+    #[inline]
+    pub fn fill_rectangular_area(
+        &mut self,
+        top: Line,
+        left: Column,
+        bottom: Line,
+        right: Column,
+        template: Cell,
+    ) {
+        if top >= self.screen_lines() || left >= self.cols() {
+            return;
+        }
+
+        trace!(
+            "Erase rectangular area: top={}, left={}, bottom={}, right={}",
+            top,
+            left,
+            bottom,
+            right
+        );
+
+        let lines = top.0..min(bottom, self.screen_lines()).0;
+        let columns = min(left, self.cols())..min(right, self.cols());
+
+        for line in lines {
+            for cell in &mut self.grid[Line(line)][columns.clone()] {
+                *cell = template.clone();
+            }
+        }
+    }
 }
 
-impl<T> Dimensions for Term<T> {
+impl<T, G> Dimensions for Term<T, G> {
     #[inline]
     fn cols(&self) -> Column {
         self.grid.cols()
@@ -832,7 +879,7 @@ impl<T> Dimensions for Term<T> {
     }
 }
 
-impl<T: EventListener> Handler for Term<T> {
+impl<T: EventListener, G> Handler for Term<T, G> {
     /// A character to be displayed.
     #[inline(never)]
     fn input(&mut self, c: char) {
@@ -1009,7 +1056,7 @@ impl<T: EventListener> Handler for Term<T> {
         match intermediate {
             None => {
                 trace!("Reporting primary device attributes");
-                let _ = writer.write_all(b"\x1b[?6c");
+                let _ = writer.write_all(b"\x1b[?4;6c");
             },
             Some('>') => {
                 trace!("Reporting secondary device attributes");
@@ -1108,6 +1155,8 @@ impl<T: EventListener> Handler for Term<T> {
         let next = self.grid.cursor.point.line + 1;
         if next == self.scroll_region.end {
             self.scroll_up(Line(1));
+            let history_size = self.history_size();
+            self.grid.graphics_mut().move_base_position(1, history_size);
         } else if next < self.screen_lines() {
             self.grid.cursor.point.line += 1;
         }
@@ -1395,6 +1444,7 @@ impl<T: EventListener> Handler for Term<T> {
                 if cursor.line > Line(1) {
                     // Fully clear all lines before the current line.
                     self.grid.reset_region(..cursor.line);
+                    self.grid.graphics_mut().clear_range(..cursor.line);
                 }
 
                 // Clear up to the current column in the current line.
@@ -1418,12 +1468,15 @@ impl<T: EventListener> Handler for Term<T> {
                     self.grid.reset_region((cursor.line + 1)..);
                 }
 
+                self.grid.graphics_mut().clear_range(cursor.line..);
+
                 self.selection =
                     self.selection.take().filter(|s| !s.intersects_range(..=cursor_buffer_line));
             },
             ansi::ClearMode::All => {
                 if self.mode.contains(TermMode::ALT_SCREEN) {
                     self.grid.reset_region(..);
+                    self.grid.graphics_mut().clear();
                 } else {
                     self.grid.clear_viewport();
                 }
@@ -1432,6 +1485,7 @@ impl<T: EventListener> Handler for Term<T> {
             },
             ansi::ClearMode::Saved if self.history_size() > 0 => {
                 self.grid.clear_history();
+                self.grid.graphics_mut().clear();
 
                 self.selection = self.selection.take().filter(|s| !s.intersects_range(num_lines..));
             },
@@ -1580,6 +1634,10 @@ impl<T: EventListener> Handler for Term<T> {
                 style.blinking = true;
                 self.event_proxy.send_event(Event::CursorBlinkingChange(true));
             },
+            ansi::Mode::SixelScrolling => self.mode.insert(TermMode::SIXEL_SCROLLING),
+            ansi::Mode::SixelPrivateColorRegisters => {
+                self.mode.insert(TermMode::SIXEL_PRIV_PALETTE)
+            },
         }
     }
 
@@ -1621,6 +1679,11 @@ impl<T: EventListener> Handler for Term<T> {
                 let style = self.cursor_style.get_or_insert(self.default_cursor_style);
                 style.blinking = false;
                 self.event_proxy.send_event(Event::CursorBlinkingChange(false));
+            },
+            ansi::Mode::SixelScrolling => self.mode.remove(TermMode::SIXEL_SCROLLING),
+            ansi::Mode::SixelPrivateColorRegisters => {
+                self.grid.graphics_mut().sixel_shared_palette = None;
+                self.mode.remove(TermMode::SIXEL_PRIV_PALETTE);
             },
         }
     }
@@ -1741,6 +1804,94 @@ impl<T: EventListener> Handler for Term<T> {
     fn text_area_size_chars<W: io::Write>(&mut self, writer: &mut W) {
         let _ = write!(writer, "\x1b[8;{};{}t", self.screen_lines(), self.cols());
     }
+
+    fn start_sixel_graphic(&mut self, params: &Params) -> Option<Box<sixel::Parser>> {
+        let palette = self.grid.graphics_mut().sixel_shared_palette.take();
+        Some(Box::new(sixel::Parser::new(params, palette)))
+    }
+
+    fn insert_graphic(&mut self, mut graphic: GraphicData, palette: Vec<Rgb>) {
+        // Store last palette if it is shared.
+        if !self.mode.contains(TermMode::SIXEL_PRIV_PALETTE) {
+            self.grid.graphics_mut().sixel_shared_palette = Some(palette);
+        }
+
+        // The new graphic is split in multiple fragments if its height is
+        // greater than `ROWS_PER_GRAPHIC`
+
+        let fragment_height =
+            ROWS_PER_GRAPHIC / self.cell_height as usize * self.cell_height as usize;
+
+        let mut fragment_offset = Line(0);
+
+        let left = if self.mode.contains(TermMode::SIXEL_SCROLLING) {
+            self.grid.cursor.point.column
+        } else {
+            Column(0)
+        };
+
+        while graphic.width > 0 && graphic.height > 0 {
+            let next_fragment;
+
+            if graphic.height > fragment_height {
+                let next_height = graphic.height - fragment_height;
+                graphic.height = fragment_height;
+
+                let next_pixels = graphic.pixels.split_off(
+                    graphic.width * fragment_height * graphic.color_type.bytes_per_pixel(),
+                );
+
+                next_fragment = Some(GraphicData {
+                    column: left,
+                    line: graphic.line,
+                    width: graphic.width,
+                    height: next_height,
+                    color_type: graphic.color_type,
+                    pixels: next_pixels,
+                });
+            } else {
+                next_fragment = None;
+            }
+
+            // Graphic position.
+            let top = if self.mode.contains(TermMode::SIXEL_SCROLLING) {
+                self.grid.cursor.point.line
+            } else {
+                fragment_offset
+            };
+
+            let rows = (graphic.height as usize + self.cell_height - 1) / self.cell_height;
+            let columns = (graphic.width as usize + self.cell_width - 1) / self.cell_width;
+
+            graphic.line = GraphicsLine::new(self.grid.graphics(), top);
+            graphic.column = left;
+
+            let mut graphics_cell = Cell::default();
+            graphics_cell.flags_mut().insert(Flags::GRAPHICS);
+
+            self.fill_rectangular_area(top, left, top + rows, left + columns, graphics_cell);
+
+            // If Sixel scrolling is enabled, add new lines to move the grid using
+            // the logic implemented in `linefeed`.
+            if self.mode.contains(TermMode::SIXEL_SCROLLING) {
+                for _ in 0..rows {
+                    self.linefeed();
+                }
+
+                self.carriage_return();
+            }
+
+            self.grid.graphics_mut().pending.push(graphic);
+
+            match next_fragment {
+                None => return,
+                Some(fragment) => {
+                    graphic = fragment;
+                    fragment_offset += rows;
+                },
+            }
+        }
+    }
 }
 
 /// Terminal version for escape sequence reports.
@@ -1826,7 +1977,7 @@ pub struct RenderableCursor {
 }
 
 impl RenderableCursor {
-    fn new<T>(term: &Term<T>) -> Self {
+    fn new<T, G>(term: &Term<T, G>) -> Self {
         // Cursor position.
         let vi_mode = term.mode().contains(TermMode::VI);
         let point = if vi_mode { term.vi_mode_cursor.point } else { term.grid().cursor.point };
@@ -1849,8 +2000,8 @@ impl RenderableCursor {
 /// Visible terminal content.
 ///
 /// This contains all content required to render the current terminal view.
-pub struct RenderableContent<'a> {
-    pub display_iter: DisplayIter<'a, Cell>,
+pub struct RenderableContent<'a, G> {
+    pub display_iter: DisplayIter<'a, Cell, G>,
     pub selection: Option<SelectionRange<Line>>,
     pub cursor: RenderableCursor,
     pub display_offset: usize,
@@ -1858,8 +2009,8 @@ pub struct RenderableContent<'a> {
     pub mode: TermMode,
 }
 
-impl<'a> RenderableContent<'a> {
-    fn new<T>(term: &'a Term<T>) -> Self {
+impl<'a, G> RenderableContent<'a, G> {
+    fn new<T>(term: &'a Term<T, G>) -> Self {
         Self {
             display_iter: term.grid().display_iter(),
             display_offset: term.grid().display_offset(),
@@ -1899,7 +2050,7 @@ pub mod test {
     ///     hello\n:)\r\ntest",
     /// );
     /// ```
-    pub fn mock_term(content: &str) -> Term<()> {
+    pub fn mock_term(content: &str) -> Term<(), ()> {
         let lines: Vec<&str> = content.split('\n').collect();
         let num_cols = lines
             .iter()
@@ -1953,7 +2104,7 @@ mod tests {
     fn semantic_selection_works() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
         let mut term = Term::new(&MockConfig::default(), size, ());
-        let mut grid: Grid<Cell> = Grid::new(Line(3), Column(5), 0);
+        let mut grid: Grid<Cell, ()> = Grid::new(Line(3), Column(5), 0);
         for i in 0..5 {
             for j in 0..2 {
                 grid[Line(j)][Column(i)].c = 'a';
@@ -2001,7 +2152,7 @@ mod tests {
     fn line_selection_works() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
         let mut term = Term::new(&MockConfig::default(), size, ());
-        let mut grid: Grid<Cell> = Grid::new(Line(1), Column(5), 0);
+        let mut grid: Grid<Cell, ()> = Grid::new(Line(1), Column(5), 0);
         for i in 0..5 {
             grid[Line(0)][Column(i)].c = 'a';
         }
@@ -2022,7 +2173,7 @@ mod tests {
     fn selecting_empty_line() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
         let mut term = Term::new(&MockConfig::default(), size, ());
-        let mut grid: Grid<Cell> = Grid::new(Line(3), Column(3), 0);
+        let mut grid: Grid<Cell, ()> = Grid::new(Line(3), Column(3), 0);
         for l in 0..3 {
             if l != 1 {
                 for c in 0..3 {
@@ -2046,9 +2197,9 @@ mod tests {
     /// test this property with a T=Cell.
     #[test]
     fn grid_serde() {
-        let grid: Grid<Cell> = Grid::new(Line(24), Column(80), 0);
+        let grid: Grid<Cell, ()> = Grid::new(Line(24), Column(80), 0);
         let serialized = serde_json::to_string(&grid).expect("ser");
-        let deserialized = serde_json::from_str::<Grid<Cell>>(&serialized).expect("de");
+        let deserialized = serde_json::from_str::<Grid<Cell, ()>>(&serialized).expect("de");
 
         assert_eq!(deserialized, grid);
     }
@@ -2056,7 +2207,7 @@ mod tests {
     #[test]
     fn input_line_drawing_character() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
-        let mut term = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
         let cursor = Point::new(Line(0), Column(0));
         term.configure_charset(CharsetIndex::G0, StandardCharset::SpecialCharacterAndLineDrawing);
         term.input('a');
@@ -2067,7 +2218,7 @@ mod tests {
     #[test]
     fn clear_saved_lines() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
-        let mut term = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
 
         // Add one line of scrollback.
         term.grid.scroll_up(&(Line(0)..Line(1)), Line(1));
@@ -2089,7 +2240,7 @@ mod tests {
     #[test]
     fn grow_lines_updates_active_cursor_pos() {
         let mut size = SizeInfo::new(100.0, 10.0, 1.0, 1.0, 0.0, 0.0, false);
-        let mut term = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
 
         // Create 10 lines of scrollback.
         for _ in 0..19 {
@@ -2109,7 +2260,7 @@ mod tests {
     #[test]
     fn grow_lines_updates_inactive_cursor_pos() {
         let mut size = SizeInfo::new(100.0, 10.0, 1.0, 1.0, 0.0, 0.0, false);
-        let mut term = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
 
         // Create 10 lines of scrollback.
         for _ in 0..19 {
@@ -2135,7 +2286,7 @@ mod tests {
     #[test]
     fn shrink_lines_updates_active_cursor_pos() {
         let mut size = SizeInfo::new(100.0, 10.0, 1.0, 1.0, 0.0, 0.0, false);
-        let mut term = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
 
         // Create 10 lines of scrollback.
         for _ in 0..19 {
@@ -2155,7 +2306,7 @@ mod tests {
     #[test]
     fn shrink_lines_updates_inactive_cursor_pos() {
         let mut size = SizeInfo::new(100.0, 10.0, 1.0, 1.0, 0.0, 0.0, false);
-        let mut term = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
 
         // Create 10 lines of scrollback.
         for _ in 0..19 {
@@ -2181,7 +2332,7 @@ mod tests {
     #[test]
     fn window_title() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
-        let mut term = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
 
         // Title None by default.
         assert_eq!(term.title, None);

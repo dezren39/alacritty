@@ -24,6 +24,7 @@ bitflags! {
         const STRIKEOUT                 = 0b0000_0010_0000_0000;
         const LEADING_WIDE_CHAR_SPACER  = 0b0000_0100_0000_0000;
         const DOUBLE_UNDERLINE          = 0b0000_1000_0000_0000;
+        const GRAPHICS                  = 0b0001_0000_0000_0000;
     }
 }
 
@@ -114,7 +115,8 @@ impl GridCell for Cell {
                     | Flags::STRIKEOUT
                     | Flags::WRAPLINE
                     | Flags::WIDE_CHAR_SPACER
-                    | Flags::LEADING_WIDE_CHAR_SPACER,
+                    | Flags::LEADING_WIDE_CHAR_SPACER
+                    | Flags::GRAPHICS,
             )
             && self.extra.as_ref().map(|extra| extra.zerowidth.is_empty()) != Some(false)
     }

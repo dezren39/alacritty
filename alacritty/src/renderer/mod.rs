@@ -17,15 +17,17 @@ use unicode_width::UnicodeWidthChar;
 use alacritty_terminal::index::Point;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::color::Rgb;
-use alacritty_terminal::term::SizeInfo;
+use alacritty_terminal::term::{SizeInfo, Term};
 
 use crate::config::font::{Font, FontDescription};
 use crate::config::ui_config::{Delta, UIConfig};
 use crate::display::content::RenderableCell;
 use crate::gl;
 use crate::gl::types::*;
+use crate::renderer::graphics::{GraphicItem, GraphicsCommand, GraphicsRenderer};
 use crate::renderer::rects::{RectRenderer, RenderRect};
 
+pub mod graphics;
 pub mod rects;
 
 // Shader source.
@@ -439,6 +441,7 @@ pub struct QuadRenderer {
     batch: Batch,
 
     rect_renderer: RectRenderer,
+    graphics_renderer: GraphicsRenderer,
 }
 
 #[derive(Debug)]
@@ -638,6 +641,7 @@ impl QuadRenderer {
         let mut renderer = Self {
             program,
             rect_renderer: RectRenderer::new()?,
+            graphics_renderer: GraphicsRenderer::new()?,
             vao,
             ebo,
             vbo_instance,
@@ -680,6 +684,28 @@ impl QuadRenderer {
             let height = size_info.height() as i32;
             gl::Viewport(padding_x, padding_y, width - 2 * padding_x, height - 2 * padding_y);
         }
+    }
+
+    /// Run the *prepare* phase of the graphics renderer.
+    ///
+    /// See the `renderer::graphics` module documentation for more details.
+    #[inline]
+    pub fn prepare_graphics<T>(
+        &self,
+        size_info: &SizeInfo,
+        terminal: &mut Term<T, GraphicItem>,
+    ) -> Option<Vec<GraphicsCommand>> {
+        let display_offset = terminal.grid().display_offset();
+        self.graphics_renderer.prepare(terminal.graphics_mut(), display_offset, size_info)
+    }
+
+    /// Run the *draw* phase of the graphics renderer.
+    ///
+    /// See the `renderer::graphics` module documentation for more details.
+    #[inline]
+    pub fn draw_graphics(&mut self, commands: Vec<GraphicsCommand>) {
+        self.graphics_renderer.draw(commands);
+        self.active_tex = 0;
     }
 
     pub fn with_api<F, T>(&mut self, config: &UIConfig, props: &SizeInfo, func: F) -> T

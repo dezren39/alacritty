@@ -42,6 +42,7 @@ use crate::display::meter::Meter;
 use crate::display::window::Window;
 use crate::event::{Mouse, SearchState};
 use crate::message_bar::{MessageBuffer, MessageType};
+use crate::renderer::graphics::GraphicItem;
 use crate::renderer::rects::{RenderLines, RenderRect};
 use crate::renderer::{self, GlyphCache, QuadRenderer};
 use crate::url::{Url, Urls};
@@ -390,9 +391,9 @@ impl Display {
     }
 
     /// Process update events.
-    pub fn handle_update<T>(
+    pub fn handle_update<T, G>(
         &mut self,
-        terminal: &mut Term<T>,
+        terminal: &mut Term<T, G>,
         pty_resize_handle: &mut dyn OnResize,
         message_buffer: &MessageBuffer,
         search_active: bool,
@@ -462,7 +463,7 @@ impl Display {
     /// This call may block if vsync is enabled.
     pub fn draw<T: EventListener>(
         &mut self,
-        terminal: MutexGuard<'_, Term<T>>,
+        mut terminal: MutexGuard<'_, Term<T, GraphicItem>>,
         message_buffer: &MessageBuffer,
         config: &Config,
         mouse: &Mouse,
@@ -500,12 +501,18 @@ impl Display {
         let vi_mode = terminal.mode().contains(TermMode::VI);
         let vi_mode_cursor = if vi_mode { Some(terminal.vi_mode_cursor) } else { None };
 
+        let graphics_commands = self.renderer.prepare_graphics(&size_info, &mut terminal);
+
         // Drop terminal as early as possible to free lock.
         drop(terminal);
 
         self.renderer.with_api(&config.ui_config, &size_info, |api| {
             api.clear(background_color);
         });
+
+        if let Some(commands) = graphics_commands {
+            self.renderer.draw_graphics(commands);
+        }
 
         let mut lines = RenderLines::new();
         let mut urls = Urls::new();

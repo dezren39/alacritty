@@ -9,6 +9,7 @@ use vte::{Params, ParamsIter};
 
 use alacritty_config_derive::ConfigDeserialize;
 
+use crate::graphics::{sixel, GraphicData};
 use crate::index::{Column, Line};
 use crate::term::color::Rgb;
 
@@ -88,8 +89,10 @@ pub struct Processor {
 }
 
 /// Internal state for VTE processor.
+#[derive(Default)]
 struct ProcessorState {
     preceding_char: Option<char>,
+    sixel_parser: Option<Box<sixel::Parser>>,
 }
 
 /// Helper type that implements `vte::Perform`.
@@ -116,7 +119,7 @@ impl<'a, H: Handler + 'a, W: io::Write> Performer<'a, H, W> {
 
 impl Default for Processor {
     fn default() -> Processor {
-        Processor { state: ProcessorState { preceding_char: None }, parser: vte::Parser::new() }
+        Processor { state: ProcessorState::default(), parser: vte::Parser::new() }
     }
 }
 
@@ -331,6 +334,14 @@ pub trait Handler {
 
     /// Report text area size in characters.
     fn text_area_size_chars<W: io::Write>(&mut self, _: &mut W) {}
+
+    /// Create a parser for Sixel data.
+    fn start_sixel_graphic(&mut self, _params: &Params) -> Option<Box<sixel::Parser>> {
+        None
+    }
+
+    /// Insert a new graphic item.
+    fn insert_graphic(&mut self, _data: GraphicData, _palette: Vec<Rgb>) {}
 }
 
 /// Terminal cursor configuration.
@@ -404,6 +415,8 @@ pub enum Mode {
     LineFeedNewLine = 20,
     /// ?25
     ShowCursor = 25,
+    /// ?80
+    SixelScrolling = 80,
     /// ?1000
     ReportMouseClicks = 1000,
     /// ?1002
@@ -422,6 +435,8 @@ pub enum Mode {
     UrgencyHints = 1042,
     /// ?1049
     SwapScreenAndSetRestoreCursor = 1049,
+    /// Use a private palette for each new graphic.
+    SixelPrivateColorRegisters = 1070,
     /// ?2004
     BracketedPaste = 2004,
 }
@@ -445,6 +460,7 @@ impl Mode {
                 7 => Mode::LineWrap,
                 12 => Mode::BlinkingCursor,
                 25 => Mode::ShowCursor,
+                80 => Mode::SixelScrolling,
                 1000 => Mode::ReportMouseClicks,
                 1002 => Mode::ReportCellMouseMotion,
                 1003 => Mode::ReportAllMouseMotion,
@@ -454,6 +470,7 @@ impl Mode {
                 1007 => Mode::AlternateScroll,
                 1042 => Mode::UrgencyHints,
                 1049 => Mode::SwapScreenAndSetRestoreCursor,
+                1070 => Mode::SixelPrivateColorRegisters,
                 2004 => Mode::BracketedPaste,
                 _ => {
                     trace!("[unimplemented] primitive mode: {}", num);
@@ -779,19 +796,44 @@ where
 
     #[inline]
     fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char) {
-        debug!(
-            "[unhandled hook] params={:?}, ints: {:?}, ignore: {:?}, action: {:?}",
-            params, intermediates, ignore, action
-        );
+        match (intermediates, action) {
+            ([], 'q') => {
+                self.state.sixel_parser = self.handler.start_sixel_graphic(params);
+            },
+            _ => {
+                debug!(
+                    "[unhandled hook] params={:?}, ints: {:?}, ignore: {:?}",
+                    params, intermediates, ignore
+                )
+            },
+        }
     }
 
     #[inline]
     fn put(&mut self, byte: u8) {
+        if let Some(parser) = &mut self.state.sixel_parser {
+            if let Err(err) = parser.put(byte) {
+                log::warn!("Failed to parse Sixel data: {}", err);
+                self.state.sixel_parser = None;
+            }
+
+            return;
+        }
+
         debug!("[unhandled put] byte={:?}", byte);
     }
 
     #[inline]
     fn unhook(&mut self) {
+        if let Some(parser) = self.state.sixel_parser.take() {
+            match parser.finish() {
+                Ok((data, palette)) => self.handler.insert_graphic(data, palette),
+                Err(err) => log::warn!("Failed to parse Sixel data: {}", err),
+            }
+
+            return;
+        }
+
         debug!("[unhandled unhook]");
     }
 

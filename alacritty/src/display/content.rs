@@ -26,8 +26,8 @@ const MAX_SEARCH_LINES: usize = 100;
 /// Renderable terminal content.
 ///
 /// This provides the terminal cursor and an iterator over all non-empty cells.
-pub struct RenderableContent<'a> {
-    terminal_content: TerminalContent<'a>,
+pub struct RenderableContent<'a, G> {
+    terminal_content: TerminalContent<'a, G>,
     terminal_cursor: TerminalCursor,
     cursor: Option<RenderableCursor>,
     search: RenderableSearch,
@@ -35,9 +35,9 @@ pub struct RenderableContent<'a> {
     colors: &'a List,
 }
 
-impl<'a> RenderableContent<'a> {
+impl<'a, G> RenderableContent<'a, G> {
     pub fn new<T: EventListener>(
-        term: &'a Term<T>,
+        term: &'a Term<T, G>,
         dfas: Option<&RegexSearch>,
         config: &'a Config<UIConfig>,
         colors: &'a List,
@@ -124,7 +124,7 @@ impl<'a> RenderableContent<'a> {
     }
 }
 
-impl<'a> Iterator for RenderableContent<'a> {
+impl<'a, G> Iterator for RenderableContent<'a, G> {
     type Item = RenderableCell;
 
     /// Gets the next renderable cell.
@@ -175,7 +175,7 @@ pub struct RenderableCell {
 }
 
 impl RenderableCell {
-    fn new<'a>(content: &mut RenderableContent<'a>, cell: Indexed<&Cell, Line>) -> Self {
+    fn new<'a, G>(content: &mut RenderableContent<'a, G>, cell: Indexed<&Cell, Line>) -> Self {
         // Lookup RGB values.
         let mut fg_rgb = Self::compute_fg_rgb(content, cell.fg, cell.flags);
         let mut bg_rgb = Self::compute_bg_rgb(content, cell.bg);
@@ -243,7 +243,7 @@ impl RenderableCell {
     }
 
     /// Get the RGB color from a cell's foreground color.
-    fn compute_fg_rgb(content: &mut RenderableContent<'_>, fg: Color, flags: Flags) -> Rgb {
+    fn compute_fg_rgb<G>(content: &mut RenderableContent<'_, G>, fg: Color, flags: Flags) -> Rgb {
         let ui_config = &content.config.ui_config;
         match fg {
             Color::Spec(rgb) => match flags & Flags::DIM {
@@ -288,7 +288,7 @@ impl RenderableCell {
 
     /// Get the RGB color from a cell's background color.
     #[inline]
-    fn compute_bg_rgb(content: &mut RenderableContent<'_>, bg: Color) -> Rgb {
+    fn compute_bg_rgb<G>(content: &mut RenderableContent<'_, G>, bg: Color) -> Rgb {
         match bg {
             Color::Spec(rgb) => rgb,
             Color::Named(ansi) => content.color(ansi as usize),
@@ -351,7 +351,7 @@ pub struct RenderableSearch {
 
 impl RenderableSearch {
     /// Create a new renderable search iterator.
-    pub fn new<T>(term: &Term<T>, dfas: &RegexSearch) -> Self {
+    pub fn new<T, G>(term: &Term<T, G>, dfas: &RegexSearch) -> Self {
         let viewport_end = term.grid().display_offset();
         let viewport_start = viewport_end + term.screen_lines().0 - 1;
 

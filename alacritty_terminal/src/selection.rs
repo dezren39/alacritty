@@ -266,7 +266,7 @@ impl Selection {
     }
 
     /// Convert selection to grid coordinates.
-    pub fn to_range<T>(&self, term: &Term<T>) -> Option<SelectionRange> {
+    pub fn to_range<T, G>(&self, term: &Term<T, G>) -> Option<SelectionRange> {
         let grid = term.grid();
         let num_cols = grid.cols();
 
@@ -320,8 +320,8 @@ impl Selection {
         Ok((start, end))
     }
 
-    fn range_semantic<T>(
-        term: &Term<T>,
+    fn range_semantic<T, G>(
+        term: &Term<T, G>,
         mut start: Point<usize>,
         mut end: Point<usize>,
     ) -> SelectionRange {
@@ -345,8 +345,8 @@ impl Selection {
         SelectionRange { start, end, is_block: false }
     }
 
-    fn range_lines<T>(
-        term: &Term<T>,
+    fn range_lines<T, G>(
+        term: &Term<T, G>,
         mut start: Point<usize>,
         mut end: Point<usize>,
     ) -> SelectionRange {
@@ -432,7 +432,7 @@ mod tests {
     use crate::index::{Column, Line, Point, Side};
     use crate::term::{SizeInfo, Term};
 
-    fn term(height: usize, width: usize) -> Term<()> {
+    fn term(height: usize, width: usize) -> Term<(), ()> {
         let size = SizeInfo::new(width as f32, height as f32, 1.0, 1.0, 0.0, 0.0, false);
         Term::new(&MockConfig::default(), size, ())
     }
