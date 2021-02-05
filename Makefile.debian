@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+
+all:
+	tic -xe alacritty,alacritty-direct extra/alacritty.info -o target/terminfo/
+	strip target/release/alacritty
+	cargo deb -p alacritty
+
+deb: all
+
+.PHONY: all

@@ -62,7 +62,13 @@ winapi = { version = "0.3.7", features = ["impl-default", "wincon"]}
 embed-resource = "1.3"
 
 [features]
-default = ["wayland", "x11"]
+default = ["x11"]
 x11 = ["copypasta/x11", "glutin/x11", "x11-dl", "png"]
 wayland = ["copypasta/wayland", "glutin/wayland", "wayland-client"]
 nightly = []
+
+[package.metadata.deb]
+assets = [
+  [ "../target/release/alacritty", "usr/bin/", "755" ],
+  [ "../target/terminfo/a/alacritty", "etc/terminfo/a/", "644" ]
+]
