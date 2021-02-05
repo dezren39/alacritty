@@ -7,7 +7,7 @@ flat in int texId;
 in vec2 texCoords;
 
 // Array with graphics data.
-uniform sampler2D textures[32];
+uniform sampler2D textures[16];
 
 void main() {
     // The expression `textures[texId]` can't be used in OpenGL 3.3.
@@ -31,10 +31,6 @@ void main() {
         TEX( 4) TEX( 5) TEX( 6) TEX( 7)
         TEX( 8) TEX( 9) TEX(10) TEX(11)
         TEX(12) TEX(13) TEX(14) TEX(15)
-        TEX(16) TEX(17) TEX(18) TEX(19)
-        TEX(20) TEX(21) TEX(22) TEX(23)
-        TEX(24) TEX(25) TEX(26) TEX(27)
-        TEX(28) TEX(29) TEX(30) TEX(31)
         default:
             discard;
     }
