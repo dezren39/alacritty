@@ -8,12 +8,10 @@ use std::cmp::min;
 use std::sync::{Arc, Weak};
 
 use image::DynamicImage;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::term::color::Rgb;
-
-/// Pixels rows in a single graphic item.
-pub const ROWS_PER_GRAPHIC: usize = 1000;
 
 /// Max allowed dimensions (width, height) for the graphic, in pixels.
 const MAX_GRAPHIC_DIMENSIONS: (usize, usize) = (4096, 4096);
@@ -27,12 +25,12 @@ pub struct GraphicId(u64);
 /// When all references to a single texture are removed, its identifier is
 /// added to the remove queue.
 #[derive(Clone, Debug)]
-struct TextureRef {
+pub struct TextureRef {
     /// Graphic identifier.
-    id: GraphicId,
+    pub id: GraphicId,
 
     /// Queue to track removed references.
-    remove_queue: Weak<parking_lot::Mutex<Vec<GraphicId>>>,
+    pub remove_queue: Weak<Mutex<Vec<GraphicId>>>,
 }
 
 impl PartialEq for TextureRef {
@@ -56,13 +54,13 @@ impl Drop for TextureRef {
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct GraphicCell {
     /// Texture to draw the graphic in this cell.
-    texture: Arc<TextureRef>,
+    pub texture: Arc<TextureRef>,
 
     /// Offset in the x direction.
-    pub offset_x: u16,
+    pub offset_x: u32,
 
     /// Offset in the y direction.
-    pub offset_y: u16,
+    pub offset_y: u32,
 }
 
 impl GraphicCell {
@@ -277,7 +275,7 @@ impl GraphicData {
 ///
 /// `base_position` is used to compute the `GraphicsLine` for a line in the grid.
 /// It is updated when the grid is scrolled up, or resized.
-#[derive(Eq, PartialEq, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Graphics {
     /// Last generated identifier.
     pub last_id: u64,
@@ -287,7 +285,7 @@ pub struct Graphics {
 
     /// Graphics removed from the grid. The display is responsible to release
     /// the resources used by them.
-    pub remove_queue: Arc<Vec<GraphicId>>,
+    pub remove_queue: Arc<Mutex<Vec<GraphicId>>>,
 
     /// Shared palette for Sixel graphics.
     pub sixel_shared_palette: Option<Vec<Rgb>>,

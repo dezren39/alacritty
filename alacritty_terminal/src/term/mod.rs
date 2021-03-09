@@ -16,8 +16,8 @@ use crate::ansi::{
 };
 use crate::config::Config;
 use crate::event::{Event, EventListener};
-use crate::graphics::{sixel, GraphicData, Graphics, ROWS_PER_GRAPHIC};
-use crate::grid::{Dimensions, DisplayIter, Grid, GridCell, Scroll};
+use crate::graphics::{sixel, GraphicCell, GraphicData, Graphics, TextureRef};
+use crate::grid::{Dimensions, DisplayIter, Grid, Scroll};
 use crate::index::{self, Boundary, Column, Direction, IndexRange, Line, Point, Side};
 use crate::selection::{Selection, SelectionRange};
 use crate::term::cell::{Cell, Flags, LineLength};
@@ -1809,7 +1809,7 @@ impl<T: EventListener> Handler for Term<T> {
             }
         }
 
-        let mut graphic = match graphic.resized(
+        let graphic = match graphic.resized(
             self.cell_width,
             self.cell_height,
             self.cell_width * self.cols().0,
@@ -1819,82 +1819,53 @@ impl<T: EventListener> Handler for Term<T> {
             None => return,
         };
 
-        let id = self.graphics.next_id();
+        let width = graphic.width as u32;
+        let height = graphic.height as u32;
 
-        // The new graphic is split in multiple fragments if its height is
-        // greater than `ROWS_PER_GRAPHIC`
+        if width == 0 || height == 0 {
+            return;
+        }
 
-        let fragment_height =
-            ROWS_PER_GRAPHIC / self.cell_height as usize * self.cell_height as usize;
+        // Add the graphic data to the pending queue.
+        let graphic_id = self.graphics.next_id();
+        self.graphics.pending.push(GraphicData { id: graphic_id, ..graphic });
 
-        let mut fragment_offset = Line(0);
+        // Fill the cells under the graphic with references to it.
+        let scrolling = self.mode.contains(TermMode::SIXEL_SCROLLING);
+        let left = if scrolling { self.grid.cursor.point.column.0 } else { 0 };
 
-        let left = if self.mode.contains(TermMode::SIXEL_SCROLLING) {
-            self.grid.cursor.point.column
-        } else {
-            Column(0)
-        };
+        let texture = Arc::new(TextureRef {
+            id: graphic_id,
+            remove_queue: Arc::downgrade(&self.graphics.remove_queue),
+        });
 
-        while graphic.width > 0 && graphic.height > 0 {
-            let next_fragment;
-
-            if graphic.height > fragment_height {
-                let next_height = graphic.height - fragment_height;
-                graphic.height = fragment_height;
-
-                let next_pixels = graphic.pixels.split_off(
-                    graphic.width * fragment_height * graphic.color_type.bytes_per_pixel(),
-                );
-
-                next_fragment = Some(GraphicData {
-                    id,
-                    width: graphic.width,
-                    height: next_height,
-                    color_type: graphic.color_type,
-                    pixels: next_pixels,
-                    resize: None,
-                });
-            } else {
-                next_fragment = None;
-            }
-
-            // Graphic position.
-            let top = if self.mode.contains(TermMode::SIXEL_SCROLLING) {
+        for (top, offset_y) in (0..).zip((0..height).step_by(self.cell_height)) {
+            let line = if scrolling {
                 self.grid.cursor.point.line
             } else {
-                fragment_offset
-            };
-
-            let rows = (graphic.height as usize + self.cell_height - 1) / self.cell_height;
-            let columns = (graphic.width as usize + self.cell_width - 1) / self.cell_width;
-
-            //graphic.line = GraphicsLine::new(self.grid.graphics(), top);
-            //graphic.column = left;
-
-            let mut graphics_cell = Cell::default();
-            graphics_cell.flags_mut().insert(Flags::GRAPHICS);
-
-            self.fill_rectangular_area(top, left, top + rows, left + columns, graphics_cell);
-
-            // If Sixel scrolling is enabled, add new lines to move the grid using
-            // the logic implemented in `linefeed`.
-            if self.mode.contains(TermMode::SIXEL_SCROLLING) {
-                for _ in 0..rows {
-                    self.linefeed();
+                if top >= self.screen_lines().0 {
+                    break;
                 }
 
-                self.carriage_return();
+                Line(top)
+            };
+
+            for (left, offset_x) in (left..self.cols().0).zip(0..width).step_by(self.cell_width) {
+                let graphic_cell = GraphicCell { texture: texture.clone(), offset_x, offset_y };
+
+                let mut cell = Cell::default();
+                cell.set_graphic(graphic_cell);
+
+                self.grid[line][Column(left)] = cell;
             }
 
-            self.graphics.pending.push(graphic);
-
-            match next_fragment {
-                None => return,
-                Some(fragment) => {
-                    graphic = fragment;
-                    fragment_offset += rows;
-                },
+            if scrolling {
+                self.linefeed();
             }
+        }
+
+        if scrolling {
+            self.carriage_return();
         }
     }
 }

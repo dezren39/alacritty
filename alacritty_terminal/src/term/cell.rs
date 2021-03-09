@@ -104,6 +104,15 @@ impl Cell {
             self.extra = None;
         }
     }
+
+    /// Set graphic data.
+    #[inline]
+    pub fn set_graphic(&mut self, graphic_cell: GraphicCell) {
+        let mut extra = self.extra.get_or_insert_with(Default::default);
+        extra.graphic = Some(Box::new(graphic_cell));
+
+        self.flags_mut().insert(Flags::GRAPHICS);
+    }
 }
 
 impl GridCell for Cell {
