@@ -9,6 +9,9 @@ in vec2 texCoords;
 // Array with graphics data.
 uniform sampler2D textures[16];
 
+// Computed color
+out vec4 color;
+
 void main() {
     // The expression `textures[texId]` can't be used in OpenGL 3.3.
     // If we try to use it, the compiler throws this error:
@@ -24,7 +27,7 @@ void main() {
     // for OpenGL 3.3, this switch block can be replaced with it.
 
 
-#define TEX(N) case N: gl_FragColor = texture(textures[N], texCoords); break;
+#define TEX(N) case N: color = texture(textures[N], texCoords); break;
 
     switch(texId) {
         TEX( 0) TEX( 1) TEX( 2) TEX( 3)
