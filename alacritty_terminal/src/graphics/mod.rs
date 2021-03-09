@@ -8,6 +8,7 @@ use std::cmp::min;
 use std::collections::BTreeMap;
 use std::mem;
 use std::ops::{Add, Bound, RangeBounds, RangeInclusive, Sub};
+use std::sync::{Arc, Weak};
 
 use image::DynamicImage;
 use serde::{Deserialize, Serialize};
@@ -21,6 +22,60 @@ pub const ROWS_PER_GRAPHIC: usize = 1000;
 
 /// Max allowed dimensions (width, height) for the graphic, in pixels.
 const MAX_GRAPHIC_DIMENSIONS: (usize, usize) = (4096, 4096);
+
+/// Unique identifier for every graphic added to a grid.
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug, Copy)]
+pub struct GraphicId(u64);
+
+/// Reference to a texture stored in the display.
+///
+/// When all references to a single texture are removed, its identifier is
+/// added to the remove queue.
+#[derive(Clone, Debug)]
+struct TextureRef {
+    /// Graphic identifier.
+    id: GraphicId,
+
+    /// Queue to track removed references.
+    remove_queue: Weak<parking_lot::Mutex<Vec<GraphicId>>>,
+}
+
+impl PartialEq for TextureRef {
+    fn eq(&self, t: &Self) -> bool {
+        // Ignore remove_queue.
+        self.id == t.id
+    }
+}
+
+impl Eq for TextureRef {}
+
+impl Drop for TextureRef {
+    fn drop(&mut self) {
+        if let Some(remove_queue) = self.remove_queue.upgrade() {
+            remove_queue.lock().push(self.id);
+        }
+    }
+}
+
+/// Graphic data stored in a single cell.
+#[derive(Eq, PartialEq, Clone, Debug)]
+pub struct GraphicCell {
+    /// Texture to draw the graphic in this cell.
+    texture: Arc<TextureRef>,
+
+    /// Offset in the x direction.
+    pub offset_x: u16,
+
+    /// Offset in the y direction.
+    pub offset_y: u16,
+}
+
+impl GraphicCell {
+    /// Graphic identifier of the texture in this cell.
+    pub fn graphic_id(&self) -> GraphicId {
+        self.texture.id
+    }
+}
 
 /// Specifies the format of the pixel data.
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug, Copy)]

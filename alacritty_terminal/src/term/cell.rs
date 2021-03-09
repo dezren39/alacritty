@@ -4,6 +4,7 @@ use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
 use crate::ansi::{Color, NamedColor};
+use crate::graphics::GraphicCell;
 use crate::grid::{self, GridCell};
 use crate::index::Column;
 
@@ -54,6 +55,9 @@ impl ResetDiscriminant<Color> for Cell {
 #[derive(Serialize, Deserialize, Default, Debug, Clone, Eq, PartialEq)]
 struct CellExtra {
     zerowidth: Vec<char>,
+
+    #[serde(skip)]
+    graphic: Option<Box<GraphicCell>>,
 }
 
 /// Content and attributes of a single cell in the terminal grid.
