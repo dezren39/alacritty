@@ -9,7 +9,7 @@ use crate::term::cell::{Flags, ResetDiscriminant};
 use crate::grid::row::Row;
 use crate::grid::{Dimensions, Grid, GridCell};
 
-impl<T: GridCell + Default + PartialEq + Clone, G> Grid<T, G> {
+impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
     /// Resize the grid's width and/or height.
     pub fn resize<D>(&mut self, reflow: bool, lines: Line, cols: Column)
     where
@@ -66,9 +66,6 @@ impl<T: GridCell + Default + PartialEq + Clone, G> Grid<T, G> {
 
         self.display_offset = self.display_offset.saturating_sub(*lines_added);
         self.decrease_scroll_limit(*lines_added);
-
-        // Update graphics position.
-        self.graphics.move_base_position(-(from_history as isize), history_size);
     }
 
     /// Remove lines from the visible area.
@@ -90,10 +87,6 @@ impl<T: GridCell + Default + PartialEq + Clone, G> Grid<T, G> {
 
             // Clamp cursors to the new viewport size.
             self.cursor.point.line = min(self.cursor.point.line, target - 1);
-
-            // Update graphics position.
-            let history_size = self.history_size();
-            self.graphics.move_base_position(required_scrolling as isize, history_size);
         }
 
         // Clamp saved cursor, since only primary cursor is scrolled into viewport.

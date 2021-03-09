@@ -16,7 +16,7 @@ use crate::ansi::{
 };
 use crate::config::Config;
 use crate::event::{Event, EventListener};
-use crate::graphics::{sixel, GraphicData, Graphics, GraphicsLine, ROWS_PER_GRAPHIC};
+use crate::graphics::{sixel, GraphicData, Graphics, ROWS_PER_GRAPHIC};
 use crate::grid::{Dimensions, DisplayIter, Grid, GridCell, Scroll};
 use crate::index::{self, Boundary, Column, Direction, IndexRange, Line, Point, Side};
 use crate::selection::{Selection, SelectionRange};
@@ -220,7 +220,7 @@ impl SizeInfo {
     }
 }
 
-pub struct Term<T, G> {
+pub struct Term<T> {
     /// Terminal focus controlling the cursor shape.
     pub is_focused: bool,
 
@@ -233,13 +233,13 @@ pub struct Term<T, G> {
     ///
     /// Tracks the screen buffer currently in use. While the alternate screen buffer is active,
     /// this will be the alternate grid. Otherwise it is the primary screen buffer.
-    grid: Grid<Cell, G>,
+    grid: Grid<Cell>,
 
     /// Currently inactive grid.
     ///
     /// Opposite of the active grid. While the alternate screen buffer is active, this will be the
     /// primary grid. Otherwise it is the alternate screen buffer.
-    inactive_grid: Grid<Cell, G>,
+    inactive_grid: Grid<Cell>,
 
     /// Index into `charsets`, pointing to what ASCII is currently being mapped to.
     active_charset: CharsetIndex,
@@ -282,9 +282,12 @@ pub struct Term<T, G> {
     /// Information about cell dimensions.
     cell_width: usize,
     cell_height: usize,
+
+    /// Data to add graphics to a grid.
+    graphics: Graphics,
 }
 
-impl<T, G> Term<T, G> {
+impl<T> Term<T> {
     #[inline]
     pub fn scroll_display(&mut self, scroll: Scroll)
     where
@@ -326,6 +329,7 @@ impl<T, G> Term<T, G> {
             selection: None,
             cell_width: size.cell_width as usize,
             cell_height: size.cell_height as usize,
+            graphics: Graphics::default(),
         }
     }
 
@@ -460,7 +464,7 @@ impl<T, G> Term<T, G> {
 
     /// Terminal content required for rendering.
     #[inline]
-    pub fn renderable_content(&self) -> RenderableContent<'_, G>
+    pub fn renderable_content(&self) -> RenderableContent<'_>
     where
         T: EventListener,
     {
@@ -471,19 +475,14 @@ impl<T, G> Term<T, G> {
     ///
     /// This is a bit of a hack; when the window is closed, the event processor
     /// serializes the grid state to a file.
-    pub fn grid(&self) -> &Grid<Cell, G> {
+    pub fn grid(&self) -> &Grid<Cell> {
         &self.grid
     }
 
     /// Mutable access for swapping out the grid during tests.
     #[cfg(test)]
-    pub fn grid_mut(&mut self) -> &mut Grid<Cell, G> {
+    pub fn grid_mut(&mut self) -> &mut Grid<Cell> {
         &mut self.grid
-    }
-
-    /// Mutable access for updating graphic data.
-    pub fn graphics_mut(&mut self) -> &mut Graphics<G> {
-        self.grid.graphics_mut()
     }
 
     /// Resize terminal to new dimensions.
@@ -862,7 +861,7 @@ impl<T, G> Term<T, G> {
     }
 }
 
-impl<T, G> Dimensions for Term<T, G> {
+impl<T> Dimensions for Term<T> {
     #[inline]
     fn cols(&self) -> Column {
         self.grid.cols()
@@ -879,7 +878,7 @@ impl<T, G> Dimensions for Term<T, G> {
     }
 }
 
-impl<T: EventListener, G> Handler for Term<T, G> {
+impl<T: EventListener> Handler for Term<T> {
     /// A character to be displayed.
     #[inline(never)]
     fn input(&mut self, c: char) {
@@ -1155,8 +1154,6 @@ impl<T: EventListener, G> Handler for Term<T, G> {
         let next = self.grid.cursor.point.line + 1;
         if next == self.scroll_region.end {
             self.scroll_up(Line(1));
-            let history_size = self.history_size();
-            self.grid.graphics_mut().move_base_position(1, history_size);
         } else if next < self.screen_lines() {
             self.grid.cursor.point.line += 1;
         }
@@ -1444,7 +1441,6 @@ impl<T: EventListener, G> Handler for Term<T, G> {
                 if cursor.line > Line(1) {
                     // Fully clear all lines before the current line.
                     self.grid.reset_region(..cursor.line);
-                    self.grid.graphics_mut().clear_range(..cursor.line);
                 }
 
                 // Clear up to the current column in the current line.
@@ -1468,15 +1464,12 @@ impl<T: EventListener, G> Handler for Term<T, G> {
                     self.grid.reset_region((cursor.line + 1)..);
                 }
 
-                self.grid.graphics_mut().clear_range(cursor.line..);
-
                 self.selection =
                     self.selection.take().filter(|s| !s.intersects_range(..=cursor_buffer_line));
             },
             ansi::ClearMode::All => {
                 if self.mode.contains(TermMode::ALT_SCREEN) {
                     self.grid.reset_region(..);
-                    self.grid.graphics_mut().clear();
                 } else {
                     self.grid.clear_viewport();
                 }
@@ -1485,8 +1478,6 @@ impl<T: EventListener, G> Handler for Term<T, G> {
             },
             ansi::ClearMode::Saved if self.history_size() > 0 => {
                 self.grid.clear_history();
-                self.grid.graphics_mut().clear();
-
                 self.selection = self.selection.take().filter(|s| !s.intersects_range(num_lines..));
             },
             // We have no history to clear.
@@ -1682,7 +1673,7 @@ impl<T: EventListener, G> Handler for Term<T, G> {
             },
             ansi::Mode::SixelScrolling => self.mode.remove(TermMode::SIXEL_SCROLLING),
             ansi::Mode::SixelPrivateColorRegisters => {
-                self.grid.graphics_mut().sixel_shared_palette = None;
+                self.graphics.sixel_shared_palette = None;
                 self.mode.remove(TermMode::SIXEL_PRIV_PALETTE);
             },
         }
@@ -1806,7 +1797,7 @@ impl<T: EventListener, G> Handler for Term<T, G> {
     }
 
     fn start_sixel_graphic(&mut self, params: &Params) -> Option<Box<sixel::Parser>> {
-        let palette = self.grid.graphics_mut().sixel_shared_palette.take();
+        let palette = self.graphics.sixel_shared_palette.take();
         Some(Box::new(sixel::Parser::new(params, palette)))
     }
 
@@ -1814,7 +1805,7 @@ impl<T: EventListener, G> Handler for Term<T, G> {
         // Store last palette if we receive a new one, and it is shared.
         if let Some(palette) = palette {
             if !self.mode.contains(TermMode::SIXEL_PRIV_PALETTE) {
-                self.grid.graphics_mut().sixel_shared_palette = Some(palette);
+                self.graphics.sixel_shared_palette = Some(palette);
             }
         }
 
@@ -1827,6 +1818,8 @@ impl<T: EventListener, G> Handler for Term<T, G> {
             Some(graphic) => graphic,
             None => return,
         };
+
+        let id = self.graphics.next_id();
 
         // The new graphic is split in multiple fragments if its height is
         // greater than `ROWS_PER_GRAPHIC`
@@ -1854,8 +1847,7 @@ impl<T: EventListener, G> Handler for Term<T, G> {
                 );
 
                 next_fragment = Some(GraphicData {
-                    column: left,
-                    line: graphic.line,
+                    id,
                     width: graphic.width,
                     height: next_height,
                     color_type: graphic.color_type,
@@ -1876,8 +1868,8 @@ impl<T: EventListener, G> Handler for Term<T, G> {
             let rows = (graphic.height as usize + self.cell_height - 1) / self.cell_height;
             let columns = (graphic.width as usize + self.cell_width - 1) / self.cell_width;
 
-            graphic.line = GraphicsLine::new(self.grid.graphics(), top);
-            graphic.column = left;
+            //graphic.line = GraphicsLine::new(self.grid.graphics(), top);
+            //graphic.column = left;
 
             let mut graphics_cell = Cell::default();
             graphics_cell.flags_mut().insert(Flags::GRAPHICS);
@@ -1894,7 +1886,7 @@ impl<T: EventListener, G> Handler for Term<T, G> {
                 self.carriage_return();
             }
 
-            self.grid.graphics_mut().pending.push(graphic);
+            self.graphics.pending.push(graphic);
 
             match next_fragment {
                 None => return,
@@ -1990,7 +1982,7 @@ pub struct RenderableCursor {
 }
 
 impl RenderableCursor {
-    fn new<T, G>(term: &Term<T, G>) -> Self {
+    fn new<T>(term: &Term<T>) -> Self {
         // Cursor position.
         let vi_mode = term.mode().contains(TermMode::VI);
         let point = if vi_mode { term.vi_mode_cursor.point } else { term.grid().cursor.point };
@@ -2013,8 +2005,8 @@ impl RenderableCursor {
 /// Visible terminal content.
 ///
 /// This contains all content required to render the current terminal view.
-pub struct RenderableContent<'a, G> {
-    pub display_iter: DisplayIter<'a, Cell, G>,
+pub struct RenderableContent<'a> {
+    pub display_iter: DisplayIter<'a, Cell>,
     pub selection: Option<SelectionRange<Line>>,
     pub cursor: RenderableCursor,
     pub display_offset: usize,
@@ -2022,8 +2014,8 @@ pub struct RenderableContent<'a, G> {
     pub mode: TermMode,
 }
 
-impl<'a, G> RenderableContent<'a, G> {
-    fn new<T>(term: &'a Term<T, G>) -> Self {
+impl<'a> RenderableContent<'a> {
+    fn new<T>(term: &'a Term<T>) -> Self {
         Self {
             display_iter: term.grid().display_iter(),
             display_offset: term.grid().display_offset(),
@@ -2063,7 +2055,7 @@ pub mod test {
     ///     hello\n:)\r\ntest",
     /// );
     /// ```
-    pub fn mock_term(content: &str) -> Term<(), ()> {
+    pub fn mock_term(content: &str) -> Term<()> {
         let lines: Vec<&str> = content.split('\n').collect();
         let num_cols = lines
             .iter()
@@ -2117,7 +2109,7 @@ mod tests {
     fn semantic_selection_works() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
         let mut term = Term::new(&MockConfig::default(), size, ());
-        let mut grid: Grid<Cell, ()> = Grid::new(Line(3), Column(5), 0);
+        let mut grid: Grid<Cell> = Grid::new(Line(3), Column(5), 0);
         for i in 0..5 {
             for j in 0..2 {
                 grid[Line(j)][Column(i)].c = 'a';
@@ -2165,7 +2157,7 @@ mod tests {
     fn line_selection_works() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
         let mut term = Term::new(&MockConfig::default(), size, ());
-        let mut grid: Grid<Cell, ()> = Grid::new(Line(1), Column(5), 0);
+        let mut grid: Grid<Cell> = Grid::new(Line(1), Column(5), 0);
         for i in 0..5 {
             grid[Line(0)][Column(i)].c = 'a';
         }
@@ -2186,7 +2178,7 @@ mod tests {
     fn selecting_empty_line() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
         let mut term = Term::new(&MockConfig::default(), size, ());
-        let mut grid: Grid<Cell, ()> = Grid::new(Line(3), Column(3), 0);
+        let mut grid: Grid<Cell> = Grid::new(Line(3), Column(3), 0);
         for l in 0..3 {
             if l != 1 {
                 for c in 0..3 {
@@ -2210,9 +2202,9 @@ mod tests {
     /// test this property with a T=Cell.
     #[test]
     fn grid_serde() {
-        let grid: Grid<Cell, ()> = Grid::new(Line(24), Column(80), 0);
+        let grid: Grid<Cell> = Grid::new(Line(24), Column(80), 0);
         let serialized = serde_json::to_string(&grid).expect("ser");
-        let deserialized = serde_json::from_str::<Grid<Cell, ()>>(&serialized).expect("de");
+        let deserialized = serde_json::from_str::<Grid<Cell>>(&serialized).expect("de");
 
         assert_eq!(deserialized, grid);
     }
@@ -2220,7 +2212,7 @@ mod tests {
     #[test]
     fn input_line_drawing_character() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
-        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_> = Term::new(&MockConfig::default(), size, ());
         let cursor = Point::new(Line(0), Column(0));
         term.configure_charset(CharsetIndex::G0, StandardCharset::SpecialCharacterAndLineDrawing);
         term.input('a');
@@ -2231,7 +2223,7 @@ mod tests {
     #[test]
     fn clear_saved_lines() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
-        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_> = Term::new(&MockConfig::default(), size, ());
 
         // Add one line of scrollback.
         term.grid.scroll_up(&(Line(0)..Line(1)), Line(1));
@@ -2253,7 +2245,7 @@ mod tests {
     #[test]
     fn grow_lines_updates_active_cursor_pos() {
         let mut size = SizeInfo::new(100.0, 10.0, 1.0, 1.0, 0.0, 0.0, false);
-        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_> = Term::new(&MockConfig::default(), size, ());
 
         // Create 10 lines of scrollback.
         for _ in 0..19 {
@@ -2273,7 +2265,7 @@ mod tests {
     #[test]
     fn grow_lines_updates_inactive_cursor_pos() {
         let mut size = SizeInfo::new(100.0, 10.0, 1.0, 1.0, 0.0, 0.0, false);
-        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_> = Term::new(&MockConfig::default(), size, ());
 
         // Create 10 lines of scrollback.
         for _ in 0..19 {
@@ -2299,7 +2291,7 @@ mod tests {
     #[test]
     fn shrink_lines_updates_active_cursor_pos() {
         let mut size = SizeInfo::new(100.0, 10.0, 1.0, 1.0, 0.0, 0.0, false);
-        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_> = Term::new(&MockConfig::default(), size, ());
 
         // Create 10 lines of scrollback.
         for _ in 0..19 {
@@ -2319,7 +2311,7 @@ mod tests {
     #[test]
     fn shrink_lines_updates_inactive_cursor_pos() {
         let mut size = SizeInfo::new(100.0, 10.0, 1.0, 1.0, 0.0, 0.0, false);
-        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_> = Term::new(&MockConfig::default(), size, ());
 
         // Create 10 lines of scrollback.
         for _ in 0..19 {
@@ -2345,7 +2337,7 @@ mod tests {
     #[test]
     fn window_title() {
         let size = SizeInfo::new(21.0, 51.0, 3.0, 3.0, 0.0, 0.0, false);
-        let mut term: Term<_, ()> = Term::new(&MockConfig::default(), size, ());
+        let mut term: Term<_> = Term::new(&MockConfig::default(), size, ());
 
         // Title None by default.
         assert_eq!(term.title, None);

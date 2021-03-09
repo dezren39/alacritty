@@ -5,8 +5,7 @@
 //!
 //! This implementation also supports `width` and `height` parameters to resize the image.
 
-use super::{GraphicData, GraphicsLine, ResizeCommand, ResizeParameter};
-use crate::index::Column;
+use super::{GraphicData, GraphicId, ResizeCommand, ResizeParameter};
 
 use std::collections::HashMap;
 use std::str;
@@ -35,7 +34,7 @@ pub fn parse(params: &[&[u8]]) -> Option<GraphicData> {
         },
     };
 
-    let mut graphics = GraphicData::from_dynamic_image(Column(0), GraphicsLine(0), image);
+    let mut graphics = GraphicData::from_dynamic_image(GraphicId(0), image);
     graphics.resize = resize_param(&params);
     Some(graphics)
 }

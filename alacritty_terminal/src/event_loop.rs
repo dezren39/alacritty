@@ -41,12 +41,12 @@ pub enum Msg {
 ///
 /// Handles all the PTY I/O and runs the PTY parser which updates terminal
 /// state.
-pub struct EventLoop<T: tty::EventedPty, U: EventListener, G> {
+pub struct EventLoop<T: tty::EventedPty, U: EventListener> {
     poll: mio::Poll,
     pty: T,
     rx: Receiver<Msg>,
     tx: Sender<Msg>,
-    terminal: Arc<FairMutex<Term<U, G>>>,
+    terminal: Arc<FairMutex<Term<U>>>,
     event_proxy: U,
     hold: bool,
     ref_test: bool,
@@ -148,15 +148,14 @@ impl Writing {
     }
 }
 
-impl<T, U, G> EventLoop<T, U, G>
+impl<T, U> EventLoop<T, U>
 where
     T: tty::EventedPty + event::OnResize + Send + 'static,
-    U: EventListener + Send + 'static,
-    G: Send + 'static,
+    U: EventListener + Send + 'static
 {
     /// Create a new event loop.
     pub fn new(
-        terminal: Arc<FairMutex<Term<U, G>>>,
+        terminal: Arc<FairMutex<Term<U>>>,
         event_proxy: U,
         pty: T,
         hold: bool,

@@ -64,7 +64,7 @@ impl ViModeCursor {
 
     /// Move vi mode cursor.
     #[must_use = "this returns the result of the operation, without modifying the original"]
-    pub fn motion<T: EventListener, G>(mut self, term: &mut Term<T, G>, motion: ViMotion) -> Self {
+    pub fn motion<T: EventListener>(mut self, term: &mut Term<T>, motion: ViMotion) -> Self {
         let display_offset = term.grid().display_offset();
         let lines = term.screen_lines();
         let cols = term.cols();
@@ -162,7 +162,7 @@ impl ViModeCursor {
 
     /// Get target cursor point for vim-like page movement.
     #[must_use = "this returns the result of the operation, without modifying the original"]
-    pub fn scroll<T: EventListener, G>(mut self, term: &Term<T, G>, lines: isize) -> Self {
+    pub fn scroll<T: EventListener>(mut self, term: &Term<T>, lines: isize) -> Self {
         // Check number of lines the cursor needs to be moved.
         let overscroll = if lines > 0 {
             let max_scroll = term.history_size() - term.grid().display_offset();
@@ -191,7 +191,7 @@ impl ViModeCursor {
 }
 
 /// Find next end of line to move to.
-fn last<T, G>(term: &Term<T, G>, mut point: Point<usize>) -> Point<usize> {
+fn last<T>(term: &Term<T>, mut point: Point<usize>) -> Point<usize> {
     let cols = term.cols();
 
     // Expand across wide cells.
@@ -217,7 +217,7 @@ fn last<T, G>(term: &Term<T, G>, mut point: Point<usize>) -> Point<usize> {
 }
 
 /// Find next non-empty cell to move to.
-fn first_occupied<T, G>(term: &Term<T, G>, mut point: Point<usize>) -> Point<usize> {
+fn first_occupied<T>(term: &Term<T>, mut point: Point<usize>) -> Point<usize> {
     let cols = term.cols();
 
     // Expand left across wide chars, since we're searching lines left to right.
@@ -260,8 +260,8 @@ fn first_occupied<T, G>(term: &Term<T, G>, mut point: Point<usize>) -> Point<usi
 }
 
 /// Move by semantically separated word, like w/b/e/ge in vi.
-fn semantic<T: EventListener, G>(
-    term: &mut Term<T, G>,
+fn semantic<T: EventListener>(
+    term: &mut Term<T>,
     mut point: Point<usize>,
     direction: Direction,
     side: Side,
@@ -310,8 +310,8 @@ fn semantic<T: EventListener, G>(
 }
 
 /// Move by whitespace separated word, like W/B/E/gE in vi.
-fn word<T: EventListener, G>(
-    term: &mut Term<T, G>,
+fn word<T: EventListener>(
+    term: &mut Term<T>,
     mut point: Point<usize>,
     direction: Direction,
     side: Side,
@@ -351,21 +351,21 @@ fn word<T: EventListener, G>(
 }
 
 /// Find first non-empty cell in line.
-fn first_occupied_in_line<T, G>(term: &Term<T, G>, line: usize) -> Option<Point<usize>> {
+fn first_occupied_in_line<T>(term: &Term<T>, line: usize) -> Option<Point<usize>> {
     (0..term.cols().0)
         .map(|col| Point::new(line, Column(col)))
         .find(|&point| !is_space(term, point))
 }
 
 /// Find last non-empty cell in line.
-fn last_occupied_in_line<T, G>(term: &Term<T, G>, line: usize) -> Option<Point<usize>> {
+fn last_occupied_in_line<T>(term: &Term<T>, line: usize) -> Option<Point<usize>> {
     (0..term.cols().0)
         .map(|col| Point::new(line, Column(col)))
         .rfind(|&point| !is_space(term, point))
 }
 
 /// Advance point based on direction.
-fn advance<T, G>(term: &Term<T, G>, point: Point<usize>, direction: Direction) -> Point<usize> {
+fn advance<T>(term: &Term<T>, point: Point<usize>, direction: Direction) -> Point<usize> {
     if direction == Direction::Left {
         point.sub_absolute(term, Boundary::Clamp, 1)
     } else {
@@ -374,18 +374,18 @@ fn advance<T, G>(term: &Term<T, G>, point: Point<usize>, direction: Direction) -
 }
 
 /// Check if cell at point contains whitespace.
-fn is_space<T, G>(term: &Term<T, G>, point: Point<usize>) -> bool {
+fn is_space<T>(term: &Term<T>, point: Point<usize>) -> bool {
     let cell = &term.grid()[point.line][point.column];
     !cell.flags().intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)
         && (cell.c == ' ' || cell.c == '\t')
 }
 
-fn is_wrap<T, G>(term: &Term<T, G>, point: Point<usize>) -> bool {
+fn is_wrap<T>(term: &Term<T>, point: Point<usize>) -> bool {
     point.line != 0 && term.grid()[point.line][point.column].flags.contains(Flags::WRAPLINE)
 }
 
 /// Check if point is at screen boundary.
-fn is_boundary<T, G>(term: &Term<T, G>, point: Point<usize>, direction: Direction) -> bool {
+fn is_boundary<T>(term: &Term<T>, point: Point<usize>, direction: Direction) -> bool {
     let total_lines = term.total_lines();
     let num_cols = term.cols();
     (point.line + 1 >= total_lines && point.column.0 == 0 && direction == Direction::Left)
@@ -400,7 +400,7 @@ mod tests {
     use crate::index::{Column, Line};
     use crate::term::{SizeInfo, Term};
 
-    fn term() -> Term<(), ()> {
+    fn term() -> Term<()> {
         let size = SizeInfo::new(20., 20., 1.0, 1.0, 0.0, 0.0, false);
         Term::new(&MockConfig::default(), size, ())
     }
@@ -509,7 +509,7 @@ mod tests {
         assert_eq!(cursor.point, Point::new(Line(0), Column(0)));
     }
 
-    fn motion_semantic_term() -> Term<(), ()> {
+    fn motion_semantic_term() -> Term<()> {
         let mut term = term();
 
         term.grid_mut()[Line(0)][Column(0)].c = 'x';

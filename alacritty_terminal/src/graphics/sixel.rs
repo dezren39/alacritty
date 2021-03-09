@@ -22,8 +22,7 @@ use std::cmp::max;
 use std::fmt;
 use std::mem;
 
-use crate::graphics::{ColorType, GraphicData, GraphicsLine, MAX_GRAPHIC_DIMENSIONS};
-use crate::index::Column;
+use crate::graphics::{ColorType, GraphicData, GraphicId, MAX_GRAPHIC_DIMENSIONS};
 use crate::term::color::Rgb;
 
 use log::trace;
@@ -496,8 +495,7 @@ impl Parser {
         }
 
         let data = GraphicData {
-            line: GraphicsLine(0),
-            column: Column(0),
+            id: GraphicId(0),
             height: self.height,
             width: self.width,
             color_type: ColorType::RGBA,
