@@ -45,9 +45,6 @@ out vec2 texCoords;
 // --------
 // UNIFORMS
 
-// Base to compute current GraphicsLine positions in the view.
-uniform float basePosition;
-
 // Width and height of a single cell.
 uniform vec2 cellDimensions;
 

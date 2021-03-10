@@ -1807,8 +1807,21 @@ impl<T: EventListener> Handler for Term<T> {
         let graphic_id = self.graphics.next_id();
         self.graphics.pending.push(GraphicData { id: graphic_id, ..graphic });
 
-        // Fill the cells under the graphic with references to it.
+        // If SIXEL_SCROLLING is enabled, the start of the graphic is the
+        // cursor position, and the grid can be scrolled if the graphic is
+        // larger than then screen. The cursor is moved to the next line
+        // after the graphic.
+        //
+        // If it is disabled, the graphic starts at (0, 0), the grid is never
+        // scrolled, and the cursor position is unmodified.
+
         let scrolling = self.mode.contains(TermMode::SIXEL_SCROLLING);
+
+        // Fill the cells under the graphic with references to it.
+        //
+        // Every cell contains a reference to the texture, and the relative
+        // position to the graphic start.
+
         let left = if scrolling { self.grid.cursor.point.column.0 } else { 0 };
 
         let texture = Arc::new(TextureRef {
@@ -1820,6 +1833,7 @@ impl<T: EventListener> Handler for Term<T> {
             let line = if scrolling {
                 self.grid.cursor.point.line
             } else {
+                // Check if the image is beyond the screen limit.
                 if top >= self.screen_lines().0 {
                     break;
                 }

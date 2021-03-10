@@ -549,7 +549,7 @@ impl Display {
                     // Update underline/strikeout.
                     lines.update(&cell);
 
-                    // Track any graphic contained in the cell.
+                    // Track any graphic present in the cell.
                     graphics_list.update(&cell);
 
                     // Draw the cell.

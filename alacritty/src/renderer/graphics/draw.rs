@@ -1,6 +1,9 @@
-//! Functions to run the graphics command in the *draw* phase.
+//! This module implements the functionality to render graphic textures
+//! in the display.
 //!
-//! See the documentation of the `renderer::graphics` module for more details.
+//! [`RenderList`] is used to track graphics in the visible cells. When all
+//! cells in the grid are read, graphics are rendered using the positions
+//! found in those cells.
 
 use std::collections::BTreeMap;
 use std::mem::{self, MaybeUninit};
@@ -15,8 +18,8 @@ use alacritty_terminal::term::SizeInfo;
 
 use log::trace;
 
-/// Render items generated from cells.
-struct RenderItem {
+/// Position to render each texture in the grid.
+struct RenderPosition {
     column: Column,
     line: Line,
     offset_x: u16,
@@ -26,7 +29,7 @@ struct RenderItem {
 /// Track textures to be rendered in the display.
 #[derive(Default)]
 pub struct RenderList {
-    items: BTreeMap<GraphicId, RenderItem>,
+    items: BTreeMap<GraphicId, RenderPosition>,
 }
 
 impl RenderList {
@@ -41,7 +44,7 @@ impl RenderList {
                 return;
             }
 
-            let render_item = RenderItem {
+            let render_item = RenderPosition {
                 column: cell.point.column,
                 line: cell.point.line,
                 offset_x: graphic.offset_x,
@@ -94,7 +97,7 @@ impl RenderList {
         vertices
     }
 
-    /// Draw graphics in the display, with the graphics rendering shader
+    /// Draw graphics in the display, using the graphics rendering shader
     /// program.
     pub fn draw(self, renderer: &GraphicsRenderer, size_info: &SizeInfo) {
         let vertices = self.build_vertices(renderer);
@@ -154,9 +157,8 @@ impl RenderList {
         // In order to send textures to the shader program we need to get a _slot_
         // for every texture associated to a graphic.
         //
-        // We have up to `u_textures.len()` slots available in each execution of
-        // the shader, which was computed when `GraphicsShaderProgram` is
-        // initialized, and it is never greater than `TEXTURES_ARRAY_SIZE`.
+        // We have `u_textures.len()` slots available in each execution of the
+        // shader.
         //
         // For each slot we need three values:
         //

@@ -66,6 +66,7 @@ pub struct GraphicCell {
 
 impl GraphicCell {
     /// Graphic identifier of the texture in this cell.
+    #[inline]
     pub fn graphic_id(&self) -> GraphicId {
         self.texture.id
     }
@@ -248,7 +249,7 @@ impl GraphicData {
     }
 }
 
-/// Queues to create or update the textures in the display.
+/// Queues to add or to remove the textures in the display.
 pub struct UpdateQueues {
     /// Graphics read from the PTY.
     pub pending: Vec<GraphicData>,
@@ -257,24 +258,13 @@ pub struct UpdateQueues {
     pub remove_queue: Vec<GraphicId>,
 }
 
-/// Storage for graphics attached to a grid.
-///
-/// Graphics read from PTY are added to the `pending` queue.
-///
-/// The display should collect items in the queue, move them the GPU (or any other
-/// presentation system), and attach them to a specific `GraphicsLine` instance.
-///
-/// The type used to track graphics in the display is generic, and we don't make
-/// any requirements for it. The display is free to use whatever works better.
-///
-/// `base_position` is used to compute the `GraphicsLine` for a line in the grid.
-/// It is updated when the grid is scrolled up, or resized.
+/// Track changes in the grid to add or to remove graphics.
 #[derive(Clone, Debug, Default)]
 pub struct Graphics {
     /// Last generated identifier.
     pub last_id: u64,
 
-    /// Graphics read from the PTY.
+    /// New graphics, received from the PTY.
     pub pending: Vec<GraphicData>,
 
     /// Graphics removed from the grid.
@@ -285,14 +275,15 @@ pub struct Graphics {
 }
 
 impl Graphics {
-    /// Generate a new graphics identifier.
+    /// Generate a new graphic identifier.
     pub fn next_id(&mut self) -> GraphicId {
         self.last_id += 1;
         GraphicId(self.last_id)
     }
 
-    /// Get queues to update graphic data. If both queues are empty, it returns
-    /// `None`.
+    /// Get queues to update graphics in the grid.
+    ///
+    /// If all queues are empty, it returns `None`.
     pub fn take_queues(&mut self) -> Option<UpdateQueues> {
         let mut remove_queue = self.remove_queue.lock();
         if remove_queue.is_empty() && self.pending.is_empty() {

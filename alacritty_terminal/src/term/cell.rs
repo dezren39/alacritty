@@ -105,7 +105,7 @@ impl Cell {
         }
     }
 
-    /// Graphic contained in the cell.
+    /// Graphic present in the cell.
     #[inline]
     pub fn graphic(&self) -> Option<&GraphicCell> {
         self.extra.as_deref().and_then(|extra| extra.graphic.as_deref())

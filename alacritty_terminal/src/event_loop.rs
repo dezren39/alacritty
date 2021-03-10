@@ -156,7 +156,7 @@ where
         pty: T,
         hold: bool,
         ref_test: bool,
-    ) -> Self {
+    ) -> EventLoop<T, U> {
         let (tx, rx) = channel::channel();
         EventLoop {
             poll: mio::Poll::new().expect("create mio Poll"),

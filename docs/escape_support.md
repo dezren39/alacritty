@@ -102,4 +102,4 @@ brevity.
 | ESCAPE    | STATUS      | NOTE                                               |
 | --------- | ----------- | -------------------------------------------------- |
 | `DCS = s` | IMPLEMENTED |                                                    |
-| `DCS q`   | IMPLEMENTED | Graphics are limited to 4096x4096, 1024 colors.    |
+| `DCS q`   | IMPLEMENTED |                                                    |
