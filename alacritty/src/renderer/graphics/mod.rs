@@ -226,7 +226,7 @@ impl GraphicsRenderer {
             }
         }
 
-        trace!(target: "graphics", "Call glDeleteTextures with {} items", textures.len());
+        trace!("Call glDeleteTextures with {} items", textures.len());
 
         unsafe {
             gl::DeleteTextures(textures.len() as GLint, textures.as_ptr());
@@ -240,7 +240,7 @@ impl GraphicsRenderer {
 
             unsafe {
                 gl::GenTextures(1, &mut texture);
-                trace!(target: "graphics", "Texture generated: {}", texture);
+                trace!("Texture generated: {}", texture);
 
                 gl::BindTexture(gl::TEXTURE_2D, texture);
                 gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAX_LEVEL, 0);

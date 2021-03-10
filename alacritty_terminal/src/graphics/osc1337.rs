@@ -21,7 +21,7 @@ pub fn parse(params: &[&[u8]]) -> Option<GraphicData> {
     let buffer = match base64::decode(contents) {
         Ok(buffer) => buffer,
         Err(err) => {
-            log::warn!(target: "graphics", "Can't decode base64 data: {}", err);
+            log::warn!("Can't decode base64 data: {}", err);
             return None;
         },
     };
@@ -29,7 +29,7 @@ pub fn parse(params: &[&[u8]]) -> Option<GraphicData> {
     let image = match image::load_from_memory(&buffer) {
         Ok(image) => image,
         Err(err) => {
-            log::warn!(target: "graphics", "Can't load image: {}", err);
+            log::warn!("Can't load image: {}", err);
             return None;
         },
     };

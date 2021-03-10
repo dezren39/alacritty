@@ -22,8 +22,8 @@ use crate::message_bar::{Message, MessageType};
 /// Name for the environment variable containing the log file's path.
 const ALACRITTY_LOG_ENV: &str = "ALACRITTY_LOG";
 /// List of targets which will be logged by Alacritty.
-const ALLOWED_TARGETS: [&str; 5] =
-    ["alacritty_terminal", "alacritty_config_derive", "alacritty", "crossfont", "graphics"];
+const ALLOWED_TARGETS: [&str; 4] =
+    ["alacritty_terminal", "alacritty_config_derive", "alacritty", "crossfont"];
 
 pub fn initialize(
     options: &Options,

@@ -130,26 +130,26 @@ impl RenderList {
         let mut batch_size = 0;
 
         macro_rules! send_batch {
-             () => {
-                 #[allow(unused_assignments)]
-                 if batch_size > 0 {
-                     trace!(target: "graphics", "Call glDrawArrays with {} items", batch_size);
+            () => {
+                #[allow(unused_assignments)]
+                if batch_size > 0 {
+                    trace!("Call glDrawArrays with {} items", batch_size);
 
-                     unsafe {
-                         gl::BufferData(
-                             gl::ARRAY_BUFFER,
-                             (batch_size * mem::size_of::<shader::Vertex>()) as isize,
-                             batch.as_ptr().cast(),
-                             gl::STREAM_DRAW,
-                         );
+                    unsafe {
+                        gl::BufferData(
+                            gl::ARRAY_BUFFER,
+                            (batch_size * mem::size_of::<shader::Vertex>()) as isize,
+                            batch.as_ptr().cast(),
+                            gl::STREAM_DRAW,
+                        );
 
-                         gl::DrawArrays(gl::TRIANGLES, 0, batch_size as GLint);
-                     }
+                        gl::DrawArrays(gl::TRIANGLES, 0, batch_size as GLint);
+                    }
 
-                     batch_size = 0;
-                 }
-             };
-         }
+                    batch_size = 0;
+                }
+            };
+        }
 
         // In order to send textures to the shader program we need to get a _slot_
         // for every texture associated to a graphic.

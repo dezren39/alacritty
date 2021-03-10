@@ -216,12 +216,7 @@ impl GraphicData {
         width = min(width, MAX_GRAPHIC_DIMENSIONS.0);
         height = min(height, MAX_GRAPHIC_DIMENSIONS.1);
 
-        log::trace!(
-            target: "graphics",
-            "Resize new graphic to width={}, height={}",
-            width,
-            height,
-        );
+        log::trace!("Resize new graphic to width={}, height={}", width, height,);
 
         // Create a new DynamicImage to resize the graphic.
         let dynimage = match self.color_type {

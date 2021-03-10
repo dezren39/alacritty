@@ -286,7 +286,7 @@ pub struct Parser {
 impl Parser {
     /// Creates a new parser.
     pub fn new(params: &Params, shared_palette: Option<Vec<Rgb>>) -> Parser {
-        trace!(target: "graphics", "Start Sixel parser");
+        trace!("Start Sixel parser");
 
         let mut parser = Parser::default();
 
@@ -396,7 +396,6 @@ impl Parser {
         }
 
         trace!(
-            target: "graphics",
             "Set Sixel image dimensions to {}x{}",
             max(self.width, width),
             max(self.height, height),
@@ -475,9 +474,11 @@ impl Parser {
         self.finish_command()?;
 
         trace!(
-            target: "graphics",
             "Finish Sixel parser: width={}, height={}, color_registers={}",
-            self.width, self.height, self.color_registers.len());
+            self.width,
+            self.height,
+            self.color_registers.len()
+        );
 
         let mut rgba_pixels = Vec::with_capacity(self.pixels.len() * 4);
 

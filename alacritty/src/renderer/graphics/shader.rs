@@ -117,7 +117,8 @@ impl GraphicsShaderProgram {
 
             u_cell_dimensions = uniform!("cellDimensions");
             u_view_dimensions = uniform!("viewDimensions");
-            u_textures = (0..TEXTURES_ARRAY_SIZE).map(|unit| uniform!("textures[{}]", unit)).collect();
+            u_textures =
+                (0..TEXTURES_ARRAY_SIZE).map(|unit| uniform!("textures[{}]", unit)).collect();
 
             gl::UseProgram(0);
         }
