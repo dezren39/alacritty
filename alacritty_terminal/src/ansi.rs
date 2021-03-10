@@ -10,7 +10,7 @@ use vte::{Params, ParamsIter};
 
 use alacritty_config_derive::ConfigDeserialize;
 
-use crate::graphics::{osc1337, sixel, GraphicData};
+use crate::graphics::{sixel, GraphicData};
 use crate::index::{Column, Line};
 use crate::term::color::Rgb;
 
@@ -1121,13 +1121,6 @@ where
 
             // Reset text cursor color.
             b"112" => self.handler.reset_color(NamedColor::Cursor as usize),
-
-            // iTerm2 Images Protocol
-            b"1337" => {
-                if let Some(graphic) = osc1337::parse(params) {
-                    self.handler.insert_graphic(graphic, None);
-                }
-            },
 
             _ => unhandled(params),
         }

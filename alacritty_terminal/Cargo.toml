@@ -27,11 +27,6 @@ base64 = "0.13.0"
 regex-automata = "0.1.9"
 dirs = "3.0.1"
 
-[dependencies.image]
-version = "0.23.12"
-default-features = false
-features = ["gif", "jpeg", "ico", "png", "pnm", "webp", "bmp"]
-
 [target.'cfg(unix)'.dependencies]
 nix = "0.19.0"
 signal-hook = { version = "0.1", features = ["mio-support"] }

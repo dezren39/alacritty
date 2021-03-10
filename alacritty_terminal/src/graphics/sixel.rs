@@ -503,7 +503,6 @@ impl Parser {
             width: self.width,
             color_type: ColorType::Rgba,
             pixels: rgba_pixels,
-            resize: None,
         };
 
         Ok((data, self.color_registers))
