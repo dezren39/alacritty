@@ -576,7 +576,7 @@ pub trait Dimensions {
     }
 }
 
-impl<T> Dimensions for Grid<T> {
+impl<G> Dimensions for Grid<G> {
     #[inline]
     fn total_lines(&self) -> usize {
         self.raw.len()
