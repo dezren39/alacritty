@@ -14,10 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 
 - IME composition preview not appearing on Windows
-- Support for Sixel protocol
-- Support for iTerm2 inline images protocol
 - Synchronized terminal updates using `DCS = 1 s ST`/`DCS = 2 s ST`
 - Regex terminal hints ([see features.md](./docs/features.md#hints))
+- Support for Sixel protocol
 
 ### Fixed
 
