@@ -939,7 +939,7 @@ where
             },
             ('q', []) => {
                 let parser = self.handler.start_sixel_graphic(params);
-                self.state.dcs = parser.map(|parser| (Dcs::SixelData(parser)));
+                self.state.dcs = parser.map(Dcs::SixelData);
             },
             _ => debug!(
                 "[unhandled hook] params={:?}, ints: {:?}, ignore: {:?}, action: {:?}",

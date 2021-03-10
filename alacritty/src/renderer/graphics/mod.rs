@@ -250,8 +250,8 @@ impl GraphicsRenderer {
                 gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint);
 
                 let pixel_format = match graphic.color_type {
-                    ColorType::RGB => gl::RGB,
-                    ColorType::RGBA => gl::RGBA,
+                    ColorType::Rgb => gl::RGB,
+                    ColorType::Rgba => gl::RGBA,
                 };
 
                 gl::TexImage2D(

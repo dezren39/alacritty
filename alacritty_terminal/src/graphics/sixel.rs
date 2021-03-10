@@ -500,7 +500,7 @@ impl Parser {
             id: GraphicId(0),
             height: self.height,
             width: self.width,
-            color_type: ColorType::RGBA,
+            color_type: ColorType::Rgba,
             pixels: rgba_pixels,
             resize: None,
         };

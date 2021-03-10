@@ -242,7 +242,7 @@ impl RenderableCell {
         RenderableCell {
             character,
             zerowidth: cell.zerowidth().map(|zerowidth| zerowidth.to_vec()),
-            graphic: cell.graphic().map(|graphic| graphic.clone()),
+            graphic: cell.graphic().cloned(),
             point: cell.point,
             fg: fg_rgb,
             bg: bg_rgb,

@@ -75,21 +75,10 @@ impl GraphicCell {
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug, Copy)]
 pub enum ColorType {
     /// 3 bytes per pixel (red, green, blue).
-    RGB,
+    Rgb,
 
     /// 4 bytes per pixel (red, green, blue, alpha).
-    RGBA,
-}
-
-impl ColorType {
-    /// Number of bytes to define a single pixel.
-    #[inline]
-    pub fn bytes_per_pixel(&self) -> usize {
-        match *self {
-            ColorType::RGB => 3,
-            ColorType::RGBA => 4,
-        }
-    }
+    Rgba,
 }
 
 /// Unit to specify a dimension to resize the graphic.
@@ -150,14 +139,14 @@ impl GraphicData {
 
         match image {
             DynamicImage::ImageRgb8(image) => {
-                color_type = ColorType::RGB;
+                color_type = ColorType::Rgb;
                 width = image.width() as usize;
                 height = image.height() as usize;
                 pixels = image.into_raw();
             },
 
             DynamicImage::ImageRgba8(image) => {
-                color_type = ColorType::RGBA;
+                color_type = ColorType::Rgba;
                 width = image.width() as usize;
                 height = image.height() as usize;
                 pixels = image.into_raw();
@@ -166,7 +155,7 @@ impl GraphicData {
             _ => {
                 // Non-RGB image. Convert it to RGBA.
                 let image = image.into_rgba8();
-                color_type = ColorType::RGBA;
+                color_type = ColorType::Rgba;
                 width = image.width() as usize;
                 height = image.height() as usize;
                 pixels = image.into_raw();
@@ -236,13 +225,13 @@ impl GraphicData {
 
         // Create a new DynamicImage to resize the graphic.
         let dynimage = match self.color_type {
-            ColorType::RGB => {
+            ColorType::Rgb => {
                 let buffer =
                     image::RgbImage::from_raw(self.width as u32, self.height as u32, self.pixels)?;
                 DynamicImage::ImageRgb8(buffer)
             },
 
-            ColorType::RGBA => {
+            ColorType::Rgba => {
                 let buffer =
                     image::RgbaImage::from_raw(self.width as u32, self.height as u32, self.pixels)?;
                 DynamicImage::ImageRgba8(buffer)
