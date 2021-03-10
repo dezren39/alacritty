@@ -36,13 +36,19 @@ pub struct Vertex {
     pub column: GLuint,
 
     /// Line where the top vertex is set.
-    pub graphics_line: GLuint,
+    pub line: GLuint,
 
     /// Height, in pixels, of the texture.
     pub height: u16,
 
     /// Width, in pixels, of the texture.
     pub width: u16,
+
+    /// Offset in the x direction.
+    pub offset_x: u16,
+
+    /// Offset in the y direction.
+    pub offset_y: u16,
 
     /// Height, in pixels, of a single cell when the graphic was added.
     pub base_cell_height: f32,
@@ -57,9 +63,6 @@ static GRAPHICS_SHADER_V: &str = include_str!("../../../res/graphics.v.glsl");
 pub struct GraphicsShaderProgram {
     /// Program id.
     pub id: GLuint,
-
-    /// Uniform of the line offset.
-    pub u_base_position: GLint,
 
     /// Uniform of the cell dimensions.
     pub u_cell_dimensions: GLint,
@@ -83,7 +86,6 @@ impl GraphicsShaderProgram {
         let fragment_shader = renderer::create_shader(gl::FRAGMENT_SHADER, GRAPHICS_SHADER_F)?;
         let program = renderer::create_program(vertex_shader, fragment_shader)?;
 
-        let u_base_position;
         let u_cell_dimensions;
         let u_view_dimensions;
         let u_textures;
@@ -114,7 +116,6 @@ impl GraphicsShaderProgram {
                 };
             }
 
-            u_base_position = uniform!("basePosition");
             u_cell_dimensions = uniform!("cellDimensions");
             u_view_dimensions = uniform!("viewDimensions");
 
@@ -140,15 +141,8 @@ impl GraphicsShaderProgram {
 
         let (vao, vbo) = define_vertex_attributes();
 
-        let shader = Self {
-            id: program,
-            u_base_position,
-            u_cell_dimensions,
-            u_view_dimensions,
-            u_textures,
-            vao,
-            vbo,
-        };
+        let shader =
+            Self { id: program, u_cell_dimensions, u_view_dimensions, u_textures, vao, vbo };
 
         Ok(shader)
     }
@@ -202,9 +196,11 @@ fn define_vertex_attributes() -> (GLuint, GLuint) {
         int_attr!(UNSIGNED_BYTE, sides);
 
         float_attr!(UNSIGNED_INT, column);
-        float_attr!(UNSIGNED_INT, graphics_line);
+        float_attr!(UNSIGNED_INT, line);
         float_attr!(UNSIGNED_SHORT, height);
         float_attr!(UNSIGNED_SHORT, width);
+        float_attr!(UNSIGNED_SHORT, offset_x);
+        float_attr!(UNSIGNED_SHORT, offset_y);
         float_attr!(FLOAT, base_cell_height);
 
         for index in 0..attr_index {

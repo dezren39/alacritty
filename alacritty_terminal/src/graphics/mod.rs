@@ -5,6 +5,7 @@ pub mod osc1337;
 pub mod sixel;
 
 use std::cmp::min;
+use std::mem;
 use std::sync::{Arc, Weak};
 
 use image::DynamicImage;
@@ -14,10 +15,10 @@ use serde::{Deserialize, Serialize};
 use crate::term::color::Rgb;
 
 /// Max allowed dimensions (width, height) for the graphic, in pixels.
-const MAX_GRAPHIC_DIMENSIONS: (usize, usize) = (4096, 4096);
+pub const MAX_GRAPHIC_DIMENSIONS: (usize, usize) = (4096, 4096);
 
 /// Unique identifier for every graphic added to a grid.
-#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug, Copy)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug, Copy, Hash, PartialOrd, Ord)]
 pub struct GraphicId(u64);
 
 /// Reference to a texture stored in the display.
@@ -57,10 +58,10 @@ pub struct GraphicCell {
     pub texture: Arc<TextureRef>,
 
     /// Offset in the x direction.
-    pub offset_x: u32,
+    pub offset_x: u16,
 
     /// Offset in the y direction.
-    pub offset_y: u32,
+    pub offset_y: u16,
 }
 
 impl GraphicCell {
@@ -263,6 +264,15 @@ impl GraphicData {
     }
 }
 
+/// Queues to create or update the textures in the display.
+pub struct UpdateQueues {
+    /// Graphics read from the PTY.
+    pub pending: Vec<GraphicData>,
+
+    /// Graphics removed from the grid.
+    pub remove_queue: Vec<GraphicId>,
+}
+
 /// Storage for graphics attached to a grid.
 ///
 /// Graphics read from PTY are added to the `pending` queue.
@@ -280,11 +290,10 @@ pub struct Graphics {
     /// Last generated identifier.
     pub last_id: u64,
 
-    /// Graphics read from the PTY, and ready to be attached to the display.
+    /// Graphics read from the PTY.
     pub pending: Vec<GraphicData>,
 
-    /// Graphics removed from the grid. The display is responsible to release
-    /// the resources used by them.
+    /// Graphics removed from the grid.
     pub remove_queue: Arc<Mutex<Vec<GraphicId>>>,
 
     /// Shared palette for Sixel graphics.
@@ -296,5 +305,18 @@ impl Graphics {
     pub fn next_id(&mut self) -> GraphicId {
         self.last_id += 1;
         GraphicId(self.last_id)
+    }
+
+    /// Get queues to update graphic data. If both queues are empty, it returns
+    /// `None`.
+    pub fn take_queues(&mut self) -> Option<UpdateQueues> {
+        let mut remove_queue = self.remove_queue.lock();
+        if remove_queue.is_empty() && self.pending.is_empty() {
+            return None;
+        }
+
+        let remove_queue = mem::take(&mut *remove_queue);
+
+        Some(UpdateQueues { pending: mem::take(&mut self.pending), remove_queue })
     }
 }

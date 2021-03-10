@@ -9,7 +9,7 @@ in vec2 texCoords;
 // Array with graphics data.
 uniform sampler2D textures[16];
 
-// Computed color
+// Computed color.
 out vec4 color;
 
 void main() {

@@ -15,8 +15,8 @@ layout(location = 1) in int sides;
 // Column number in the grid where the left vertex is set.
 layout(location = 2) in float column;
 
-// Line, relative to `basePosition`, where the top vertex is set.
-layout(location = 3) in float graphicsLine;
+// Line number in the grid where the left vertex is set.
+layout(location = 3) in float line;
 
 // Height in pixels of the texture.
 layout(location = 4) in float height;
@@ -24,8 +24,14 @@ layout(location = 4) in float height;
 // Width in pixels of the texture.
 layout(location = 5) in float width;
 
+// Offset in the X direction.
+layout(location = 6) in float offsetX;
+
+// Offset in the Y direction.
+layout(location = 7) in float offsetY;
+
 // Height in pixels of a single cell when the graphic was added.
-layout(location = 6) in float baseCellHeight;
+layout(location = 8) in float baseCellHeight;
 
 // -------
 // OUTPUTS
@@ -54,8 +60,8 @@ uniform vec2 viewDimensions;
 
 void main() {
     float scale = cellDimensions.y / baseCellHeight;
-    float x = (column * cellDimensions.x) / (viewDimensions.x / 2) - 1;
-    float y = -((graphicsLine - basePosition) * cellDimensions.y) / (viewDimensions.y / 2) + 1;
+    float x = (column * cellDimensions.x - offsetX * scale) / (viewDimensions.x / 2) - 1;
+    float y = -(line * cellDimensions.y - offsetY * scale) / (viewDimensions.y / 2) + 1;
 
     vec4 position = vec4(x, y, 0, 1);
     vec2 coords = vec2(0, 0);

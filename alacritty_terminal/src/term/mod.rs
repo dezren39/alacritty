@@ -16,7 +16,9 @@ use crate::ansi::{
 };
 use crate::config::Config;
 use crate::event::{Event, EventListener};
-use crate::graphics::{sixel, GraphicCell, GraphicData, Graphics, TextureRef};
+use crate::graphics::{
+    sixel, GraphicCell, GraphicData, Graphics, TextureRef, UpdateQueues, MAX_GRAPHIC_DIMENSIONS,
+};
 use crate::grid::{Dimensions, DisplayIter, Grid, Scroll};
 use crate::index::{self, Boundary, Column, Direction, IndexRange, Line, Point, Side};
 use crate::selection::{Selection, SelectionRange};
@@ -483,6 +485,12 @@ impl<T> Term<T> {
     #[cfg(test)]
     pub fn grid_mut(&mut self) -> &mut Grid<Cell> {
         &mut self.grid
+    }
+
+    /// Get queues to update graphic data. If both queues are empty, it returns
+    /// `None`.
+    pub fn graphics_take_queues(&mut self) -> Option<UpdateQueues> {
+        self.graphics.take_queues()
     }
 
     /// Resize terminal to new dimensions.
@@ -1819,8 +1827,12 @@ impl<T: EventListener> Handler for Term<T> {
             None => return,
         };
 
-        let width = graphic.width as u32;
-        let height = graphic.height as u32;
+        if graphic.width > MAX_GRAPHIC_DIMENSIONS.0 || graphic.height > MAX_GRAPHIC_DIMENSIONS.1 {
+            return;
+        }
+
+        let width = graphic.width as u16;
+        let height = graphic.height as u16;
 
         if width == 0 || height == 0 {
             return;
@@ -1850,7 +1862,7 @@ impl<T: EventListener> Handler for Term<T> {
                 Line(top)
             };
 
-            for (left, offset_x) in (left..self.cols().0).zip(0..width).step_by(self.cell_width) {
+            for (left, offset_x) in (left..self.cols().0).zip((0..width).step_by(self.cell_width)) {
                 let graphic_cell = GraphicCell { texture: texture.clone(), offset_x, offset_y };
 
                 let mut cell = Cell::default();

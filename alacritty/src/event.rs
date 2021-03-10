@@ -25,7 +25,6 @@ use glutin::platform::run_return::EventLoopExtRunReturn;
 #[cfg(all(feature = "wayland", not(any(target_os = "macos", windows))))]
 use glutin::platform::unix::EventLoopWindowTargetExtUnix;
 use log::info;
-use serde::Serialize;
 use serde_json as json;
 
 use crossfont::{self, Size};
@@ -52,7 +51,6 @@ use crate::input::{self, ActionContext as _, FONT_SIZE_STEP};
 #[cfg(target_os = "macos")]
 use crate::macos;
 use crate::message_bar::{Message, MessageBuffer};
-use crate::renderer::graphics::GraphicItem;
 use crate::scheduler::{Scheduler, TimerId};
 use crate::url::{Url, Urls};
 
@@ -163,9 +161,9 @@ impl Default for SearchState {
     }
 }
 
-pub struct ActionContext<'a, N, T, G> {
+pub struct ActionContext<'a, N, T> {
     pub notifier: &'a mut N,
-    pub terminal: &'a mut Term<T, G>,
+    pub terminal: &'a mut Term<T>,
     pub clipboard: &'a mut Clipboard,
     pub mouse: &'a mut Mouse,
     pub received_count: &'a mut usize,
@@ -183,9 +181,7 @@ pub struct ActionContext<'a, N, T, G> {
     dirty: &'a mut bool,
 }
 
-impl<'a, N: Notify + 'a, T: EventListener, G> input::ActionContext<T, G>
-    for ActionContext<'a, N, T, G>
-{
+impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionContext<'a, N, T> {
     #[inline]
     fn write_to_pty<B: Into<Cow<'static, [u8]>>>(&mut self, val: B) {
         self.notifier.notify(val);
@@ -341,12 +337,12 @@ impl<'a, N: Notify + 'a, T: EventListener, G> input::ActionContext<T, G>
     }
 
     #[inline]
-    fn terminal(&self) -> &Term<T, G> {
+    fn terminal(&self) -> &Term<T> {
         self.terminal
     }
 
     #[inline]
-    fn terminal_mut(&mut self) -> &mut Term<T, G> {
+    fn terminal_mut(&mut self) -> &mut Term<T> {
         self.terminal
     }
 
@@ -702,7 +698,7 @@ impl<'a, N: Notify + 'a, T: EventListener, G> input::ActionContext<T, G>
     }
 }
 
-impl<'a, N: Notify + 'a, T: EventListener, G> ActionContext<'a, N, T, G> {
+impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
     fn update_search(&mut self) {
         let regex = match self.search_state.regex() {
             Some(regex) => regex,
@@ -997,11 +993,8 @@ impl<N: Notify + OnResize> Processor<N> {
     }
 
     /// Run the event loop.
-    pub fn run<T>(
-        &mut self,
-        terminal: Arc<FairMutex<Term<T, GraphicItem>>>,
-        mut event_loop: EventLoop<Event>,
-    ) where
+    pub fn run<T>(&mut self, terminal: Arc<FairMutex<Term<T>>>, mut event_loop: EventLoop<Event>)
+    where
         T: EventListener,
     {
         let mut scheduler = Scheduler::new();
@@ -1132,27 +1125,14 @@ impl<N: Notify + OnResize> Processor<N> {
         if self.config.ui_config.debug.ref_test {
             self.write_ref_test_results(&terminal.lock());
         }
-
-        // In debug mode, `TextureName` has a `Drop` implementation to check if
-        // the texture was deleted.
-        //
-        // We are not deleting the textures used by the graphics. Like `Atlas`,
-        // we just expect them to be deleted when the application exits.
-        //
-        // To avoid the warnings on the log, we have to reset the inner value
-        // of the `TextureName` instances.
-        #[cfg(debug_assertions)]
-        for item in &mut terminal.lock().graphics_mut().attachments.values_mut() {
-            item.forget_texture();
-        }
     }
 
     /// Handle events from glutin.
     ///
     /// Doesn't take self mutably due to borrow checking.
-    fn handle_event<T, G>(
+    fn handle_event<T>(
         event: GlutinEvent<'_, Event>,
-        processor: &mut input::Processor<T, G, ActionContext<'_, N, T, G>>,
+        processor: &mut input::Processor<T, ActionContext<'_, N, T>>,
     ) where
         T: EventListener,
     {
@@ -1339,10 +1319,8 @@ impl<N: Notify + OnResize> Processor<N> {
     }
 
     /// Reload the configuration files from disk.
-    fn reload_config<T, G>(
-        path: &Path,
-        processor: &mut input::Processor<T, G, ActionContext<'_, N, T, G>>,
-    ) where
+    fn reload_config<T>(path: &Path, processor: &mut input::Processor<T, ActionContext<'_, N, T>>)
+    where
         T: EventListener,
     {
         if !processor.ctx.message_buffer.is_empty() {
@@ -1412,9 +1390,9 @@ impl<N: Notify + OnResize> Processor<N> {
     }
 
     /// Submit the pending changes to the `Display`.
-    fn submit_display_update<T, G>(
+    fn submit_display_update<T>(
         &mut self,
-        terminal: &mut Term<T, G>,
+        terminal: &mut Term<T>,
         old_is_searching: bool,
         display_update_pending: DisplayUpdate,
     ) where
@@ -1450,10 +1428,7 @@ impl<N: Notify + OnResize> Processor<N> {
     }
 
     /// Write the ref test results to the disk.
-    fn write_ref_test_results<T, G>(&self, terminal: &Term<T, G>)
-    where
-        G: Clone + Serialize,
-    {
+    fn write_ref_test_results<T>(&self, terminal: &Term<T>) {
         // Dump grid state.
         let mut grid = terminal.grid().clone();
         grid.initialize_all();

@@ -14,17 +14,18 @@ use fnv::FnvHasher;
 use log::{error, info};
 use unicode_width::UnicodeWidthChar;
 
+use alacritty_terminal::graphics::UpdateQueues;
 use alacritty_terminal::index::Point;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::color::Rgb;
-use alacritty_terminal::term::{SizeInfo, Term};
+use alacritty_terminal::term::SizeInfo;
 
 use crate::config::font::{Font, FontDescription};
 use crate::config::ui_config::{Delta, UIConfig};
 use crate::display::content::RenderableCell;
 use crate::gl;
 use crate::gl::types::*;
-use crate::renderer::graphics::{GraphicItem, GraphicsCommand, GraphicsRenderer};
+use crate::renderer::graphics::GraphicsRenderer;
 use crate::renderer::rects::{RectRenderer, RenderRect};
 
 pub mod graphics;
@@ -686,25 +687,16 @@ impl QuadRenderer {
         }
     }
 
-    /// Run the *prepare* phase of the graphics renderer.
-    ///
-    /// See the `renderer::graphics` module documentation for more details.
+    /// Run the required actions to apply changes for the graphics in the grid.
     #[inline]
-    pub fn prepare_graphics<T>(
-        &self,
-        size_info: &SizeInfo,
-        terminal: &mut Term<T, GraphicItem>,
-    ) -> Option<Vec<GraphicsCommand>> {
-        let display_offset = terminal.grid().display_offset();
-        self.graphics_renderer.prepare(terminal.graphics_mut(), display_offset, size_info)
+    pub fn graphics_run_updates(&mut self, update_queues: UpdateQueues, size_info: &SizeInfo) {
+        self.graphics_renderer.run_updates(update_queues, size_info);
     }
 
-    /// Run the *draw* phase of the graphics renderer.
-    ///
-    /// See the `renderer::graphics` module documentation for more details.
+    /// Draw graphics visible in the display.
     #[inline]
-    pub fn draw_graphics(&mut self, commands: Vec<GraphicsCommand>) {
-        self.graphics_renderer.draw(commands);
+    pub fn graphics_draw(&mut self, render_list: graphics::RenderList, size_info: &SizeInfo) {
+        self.graphics_renderer.draw(render_list, size_info);
         self.active_tex = 0;
     }
 
@@ -858,6 +850,7 @@ impl<'a> RenderApi<'a> {
                 point: Point::new(point.line, point.column + i),
                 character,
                 zerowidth: None,
+                graphic: None,
                 flags: Flags::empty(),
                 bg_alpha: 1.0,
                 fg,

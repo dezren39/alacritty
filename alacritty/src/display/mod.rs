@@ -42,7 +42,6 @@ use crate::display::meter::Meter;
 use crate::display::window::Window;
 use crate::event::{Mouse, SearchState};
 use crate::message_bar::{MessageBuffer, MessageType};
-use crate::renderer::graphics::GraphicItem;
 use crate::renderer::rects::{RenderLines, RenderRect};
 use crate::renderer::{self, GlyphCache, QuadRenderer};
 use crate::url::{Url, Urls};
@@ -391,9 +390,9 @@ impl Display {
     }
 
     /// Process update events.
-    pub fn handle_update<T, G>(
+    pub fn handle_update<T>(
         &mut self,
-        terminal: &mut Term<T, G>,
+        terminal: &mut Term<T>,
         pty_resize_handle: &mut dyn OnResize,
         message_buffer: &MessageBuffer,
         search_active: bool,
@@ -463,7 +462,7 @@ impl Display {
     /// This call may block if vsync is enabled.
     pub fn draw<T: EventListener>(
         &mut self,
-        mut terminal: MutexGuard<'_, Term<T, GraphicItem>>,
+        mut terminal: MutexGuard<'_, Term<T>>,
         message_buffer: &MessageBuffer,
         config: &Config,
         mouse: &Mouse,
@@ -501,7 +500,7 @@ impl Display {
         let vi_mode = terminal.mode().contains(TermMode::VI);
         let vi_mode_cursor = if vi_mode { Some(terminal.vi_mode_cursor) } else { None };
 
-        let graphics_commands = self.renderer.prepare_graphics(&size_info, &mut terminal);
+        let graphics_queues = terminal.graphics_take_queues();
 
         // Drop terminal as early as possible to free lock.
         drop(terminal);
@@ -510,12 +509,13 @@ impl Display {
             api.clear(background_color);
         });
 
-        if let Some(commands) = graphics_commands {
-            self.renderer.draw_graphics(commands);
+        if let Some(graphics_queues) = graphics_queues {
+            self.renderer.graphics_run_updates(graphics_queues, &size_info);
         }
 
         let mut lines = RenderLines::new();
         let mut urls = Urls::new();
+        let mut graphics_list = renderer::graphics::RenderList::default();
 
         // Draw grid.
         {
@@ -544,11 +544,16 @@ impl Display {
                     // Update underline/strikeout.
                     lines.update(&cell);
 
+                    // Track any graphic contained in the cell.
+                    graphics_list.update(&cell);
+
                     // Draw the cell.
                     api.render_cell(cell, glyph_cache);
                 }
             });
         }
+
+        self.renderer.graphics_draw(graphics_list, &size_info);
 
         let mut rects = lines.rects(&metrics, &size_info);
 

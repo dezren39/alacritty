@@ -139,8 +139,7 @@
 
 use std::mem;
 
-use alacritty_terminal::graphics::{ColorType, GraphicData, Graphics, GraphicsLine};
-use alacritty_terminal::index::Column;
+use alacritty_terminal::graphics::{ColorType, GraphicData, GraphicId, UpdateQueues};
 use alacritty_terminal::term::SizeInfo;
 
 use log::trace;
@@ -150,9 +149,12 @@ use crate::gl;
 use crate::gl::types::*;
 use crate::renderer;
 
+use std::collections::HashMap;
+
 mod draw;
-mod prepare;
 mod shader;
+
+pub use draw::RenderList;
 
 /// Type for texture names generated in the GPU.
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug)]
@@ -175,15 +177,9 @@ impl Drop for TextureName {
 /// This type contains the necessary data to draw a graphic in the
 /// viewport. It is generated during the *prepare* phase.
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
-pub struct GraphicItem {
+pub struct GraphicTexture {
     /// Texture in the GPU where the graphic pixels are stored.
     texture: TextureName,
-
-    /// Column where the graphic is attached.
-    column: Column,
-
-    /// Last line where the graphic can be seen.
-    bottom: GraphicsLine,
 
     /// Cell height at the moment graphic was created.
     ///
@@ -191,186 +187,104 @@ pub struct GraphicItem {
     cell_height: f32,
 
     /// Width in pixels of the graphic.
-    width: usize,
+    width: u16,
 
     /// Height in pixels of the graphic.
-    height: usize,
-}
-
-impl GraphicItem {
-    /// Ignore the inner value to avoid the warning of the `Drop`
-    /// implementation.
-    ///
-    /// It should be used only when we know that the texture will not be
-    /// released explicitly (for instance, when application exits).
-    #[cfg(debug_assertions)]
-    pub fn forget_texture(&mut self) {
-        self.texture.0 = 0;
-    }
-}
-
-/// Data for the `ResizeTexture` graphics command.
-#[derive(Debug, PartialEq)]
-pub struct ResizeTextureData {
-    /// Texture to store the graphic.
-    target_texture: GLuint,
-
-    /// Graphic item to read the current texture pixels.
-    source: GraphicItem,
-
-    /// Offset in the x direction to copy the source texture.
-    source_offset: GLint,
-
-    /// Width in pixels of the new texture.
-    width: usize,
-
-    /// Height in pixels of the new texture.
-    height: usize,
-}
-
-/// Data for the `BlitGraphic` graphics command.
-#[derive(Debug, PartialEq)]
-pub struct BlitGraphicData {
-    /// Texture where the pixels will be copied.
-    texture: GLuint,
-
-    /// Offset in the x direction to copy the pixels.
-    offset_x: usize,
-
-    /// Offset in the y direction to copy the pixels.
-    offset_y: usize,
-
-    /// Width of the image defined by the pixels data.
-    width: usize,
-
-    /// Height of the image defined by the pixels data.
-    height: usize,
-
-    /// Format of every pixel.
-    color_type: ColorType,
-
-    /// Pixels data.
-    pixels: Vec<u8>,
-}
-
-/// Data for the `Render` graphics command.
-#[derive(Debug, PartialEq)]
-pub struct RenderData {
-    /// Vertices for the `glDrawArrays` call.
-    pub vertices: Vec<shader::Vertex>,
-
-    /// Offset to compute the position the graphics from the `GraphicsLine`.
-    pub graphics_line_offset: f32,
-
-    /// Width in pixels of the viewport.
-    pub view_width: f32,
-
-    /// Height in pixels of the viewport.
-    pub view_height: f32,
-
-    /// Width in pixels of a single grid cell.
-    pub cell_width: f32,
-
-    /// Height in pixels of a single grid cell.
-    pub cell_height: f32,
-}
-
-/// Commands generated during the *prepare* phase.
-#[derive(Debug, PartialEq)]
-pub enum GraphicsCommand {
-    /// Delete the textures in the array, in a single call to
-    /// `glDeleteTextures`.
-    DeleteTextures(Vec<GLuint>),
-
-    /// Configure a new texture and copy the pixels in the `GraphicData`
-    /// instance.
-    InitTexture(GLuint, GraphicData),
-
-    /// Configure a new texture and copy the pixels of another one. Then,
-    /// delete the old texture.
-    ///
-    /// See [`run_resize_texture`](draw::run_resize_texture) for more details.
-    ResizeTexture(ResizeTextureData),
-
-    /// Transfer pixels from the CPU memory to a texture.
-    BlitGraphic(BlitGraphicData),
-
-    /// Use the graphics rendering shader program to show the graphics
-    /// in the display.
-    Render(RenderData),
+    height: u16,
 }
 
 #[derive(Debug)]
 pub struct GraphicsRenderer {
+    /// Program in the GPU to render graphics.
     program: shader::GraphicsShaderProgram,
+
+    /// Collection to associate graphic identifiers with their textures.
+    graphic_textures: HashMap<GraphicId, GraphicTexture>,
 }
 
 impl GraphicsRenderer {
     pub fn new() -> Result<GraphicsRenderer, renderer::Error> {
         let program = shader::GraphicsShaderProgram::new()?;
-        Ok(GraphicsRenderer { program })
+        Ok(GraphicsRenderer { program, graphic_textures: HashMap::default() })
     }
 
-    /// Run the *prepare* phase, and return the commands for the *draw* phase.
-    ///
-    /// If there is no graphics in the grid, return `None`.
+    /// Run the required actions to apply changes for the graphics in the grid.
     #[inline]
-    pub fn prepare(
-        &self,
-        graphics: &mut Graphics<GraphicItem>,
-        display_offset: usize,
-        size_info: &SizeInfo,
-    ) -> Option<Vec<GraphicsCommand>> {
-        let attachments_is_empty = graphics.attachments.is_empty();
-        let pending_is_empty = graphics.pending.is_empty();
-        let removed_is_empty = graphics.removed.is_empty();
-
-        // If there are no graphics in the grid, return as soon as possible.
-        if attachments_is_empty && pending_is_empty && removed_is_empty {
-            return None;
-        }
-
-        let mut commands = Vec::new();
-
-        // Collect textures to be deleted.
-        if !removed_is_empty {
-            commands.push(prepare::delete(mem::take(&mut graphics.removed)));
-        }
-
-        // Prepare textures that need to be initialized in the GPU.
-        if !pending_is_empty {
-            for data in mem::take(&mut graphics.pending) {
-                prepare::attach_graphics(graphics, size_info, &mut commands, data, || {
-                    let mut texture: GLuint = 0;
-                    unsafe { gl::GenTextures(1, &mut texture) };
-                    trace!(target: "graphics", "Texture generated: {}", texture);
-                    texture
-                });
-            }
-        }
-
-        // Collect graphics to draw on the display. They could be added
-        // after processing the `pending` field, so we can't reuse the
-        // `attachments_is_empty` variable.
-        if !graphics.attachments.is_empty() {
-            prepare::render_commands(graphics, size_info, display_offset, &mut commands);
-        }
-
-        Some(commands)
+    pub fn run_updates(&mut self, update_queues: UpdateQueues, size_info: &SizeInfo) {
+        self.remove_graphics(update_queues.remove_queue);
+        self.upload_pending_graphics(update_queues.pending, size_info);
     }
 
-    /// Run the *draw* phase, to show graphics in the grid.
-    pub fn draw(&self, commands: Vec<GraphicsCommand>) {
-        for command in commands {
-            match command {
-                GraphicsCommand::DeleteTextures(textures) => draw::run_delete_textures(textures),
-                GraphicsCommand::InitTexture(texture, data) => {
-                    draw::run_init_texture(texture, data)
-                },
-                GraphicsCommand::ResizeTexture(data) => draw::run_resize_texture(data),
-                GraphicsCommand::BlitGraphic(data) => draw::run_blit_graphic(data),
-                GraphicsCommand::Render(data) => draw::run_render(&self.program, data),
+    /// Release resources used by removed graphics.
+    fn remove_graphics(&mut self, removed_ids: Vec<GraphicId>) {
+        let mut textures = Vec::with_capacity(removed_ids.len());
+        for id in removed_ids {
+            if let Some(mut graphic_texture) = self.graphic_textures.remove(&id) {
+                // Reset the inner value of TextureName, so the Drop implementation
+                // (in debug mode) can verify that the texture was deleted.
+                textures.push(mem::take(&mut graphic_texture.texture.0));
             }
+        }
+
+        trace!(target: "graphics", "Call glDeleteTextures with {} items", textures.len());
+
+        unsafe {
+            gl::DeleteTextures(textures.len() as GLint, textures.as_ptr());
+        }
+    }
+
+    /// Create new textures in the GPU, and upload the pixels to them.
+    fn upload_pending_graphics(&mut self, graphics: Vec<GraphicData>, size_info: &SizeInfo) {
+        for graphic in graphics {
+            let mut texture = 0;
+
+            unsafe {
+                gl::GenTextures(1, &mut texture);
+                trace!(target: "graphics", "Texture generated: {}", texture);
+
+                gl::BindTexture(gl::TEXTURE_2D, texture);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAX_LEVEL, 0);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as GLint);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as GLint);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint);
+                gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint);
+
+                let pixel_format = match graphic.color_type {
+                    ColorType::RGB => gl::RGB,
+                    ColorType::RGBA => gl::RGBA,
+                };
+
+                gl::TexImage2D(
+                    gl::TEXTURE_2D,
+                    0,
+                    gl::RGBA as GLint,
+                    graphic.width as GLint,
+                    graphic.height as GLint,
+                    0,
+                    pixel_format,
+                    gl::UNSIGNED_BYTE,
+                    graphic.pixels.as_ptr().cast(),
+                );
+
+                gl::BindTexture(gl::TEXTURE_2D, 0);
+            }
+
+            let graphic_texture = GraphicTexture {
+                texture: TextureName(texture),
+                cell_height: size_info.cell_height(),
+                width: graphic.width as u16,
+                height: graphic.height as u16,
+            };
+
+            self.graphic_textures.insert(graphic.id, graphic_texture);
+        }
+    }
+
+    /// Draw graphics in the display.
+    #[inline]
+    pub fn draw(&mut self, render_list: RenderList, size_info: &SizeInfo) {
+        if !render_list.is_empty() {
+            render_list.draw(self, size_info);
         }
     }
 }
