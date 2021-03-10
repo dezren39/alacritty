@@ -831,42 +831,6 @@ impl<T> Term<T> {
 
         cursor_cell
     }
-
-    /// Fill the specified rectangular area with a template cell.
-    ///
-    /// This function is inspired by the [`DECERA`] control function.
-    ///
-    /// [`DECERA`]: https://vt100.net/docs/vt510-rm/DECERA.html
-    #[inline]
-    pub fn fill_rectangular_area(
-        &mut self,
-        top: Line,
-        left: Column,
-        bottom: Line,
-        right: Column,
-        template: Cell,
-    ) {
-        if top >= self.screen_lines() || left >= self.cols() {
-            return;
-        }
-
-        trace!(
-            "Erase rectangular area: top={}, left={}, bottom={}, right={}",
-            top,
-            left,
-            bottom,
-            right
-        );
-
-        let lines = top.0..min(bottom, self.screen_lines()).0;
-        let columns = min(left, self.cols())..min(right, self.cols());
-
-        for line in lines {
-            for cell in &mut self.grid[Line(line)][columns.clone()] {
-                *cell = template.clone();
-            }
-        }
-    }
 }
 
 impl<T> Dimensions for Term<T> {

@@ -1,4 +1,3 @@
-use std::cmp::min;
 use std::mem;
 
 use crate::gl;
@@ -118,23 +117,7 @@ impl GraphicsShaderProgram {
 
             u_cell_dimensions = uniform!("cellDimensions");
             u_view_dimensions = uniform!("viewDimensions");
-
-            // Get the number of texture units available in the GPU, so we
-            // don't excess it if it is less than `TEXTURES_ARRAY_SIZE`.
-
-            let mut max_units = 0;
-            gl::GetIntegerv(gl::MAX_COMBINED_TEXTURE_IMAGE_UNITS, &mut max_units);
-
-            if max_units > 0 {
-                let units = min(TEXTURES_ARRAY_SIZE, max_units as usize);
-                u_textures = (0..units).map(|unit| uniform!("textures[{}]", unit)).collect();
-            } else {
-                log::error!(
-                    "GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS is {}. Graphics are unavailable.",
-                    max_units
-                );
-                u_textures = Vec::new();
-            }
+            u_textures = (0..TEXTURES_ARRAY_SIZE).map(|unit| uniform!("textures[{}]", unit)).collect();
 
             gl::UseProgram(0);
         }
