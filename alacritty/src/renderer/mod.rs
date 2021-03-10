@@ -21,7 +21,7 @@ use alacritty_terminal::term::color::Rgb;
 use alacritty_terminal::term::SizeInfo;
 
 use crate::config::font::{Font, FontDescription};
-use crate::config::ui_config::{Delta, UIConfig};
+use crate::config::ui_config::{Delta, UiConfig};
 use crate::display::content::RenderableCell;
 use crate::gl;
 use crate::gl::types::*;
@@ -452,7 +452,7 @@ pub struct RenderApi<'a> {
     atlas: &'a mut Vec<Atlas>,
     current_atlas: &'a mut usize,
     program: &'a mut TextShaderProgram,
-    config: &'a UIConfig,
+    config: &'a UiConfig,
 }
 
 #[derive(Debug)]
@@ -700,7 +700,7 @@ impl QuadRenderer {
         self.active_tex = 0;
     }
 
-    pub fn with_api<F, T>(&mut self, config: &UIConfig, props: &SizeInfo, func: F) -> T
+    pub fn with_api<F, T>(&mut self, config: &UiConfig, props: &SizeInfo, func: F) -> T
     where
         F: FnOnce(RenderApi<'_>) -> T,
     {
@@ -768,6 +768,16 @@ impl QuadRenderer {
                 size.padding_y(),
             );
             gl::UseProgram(0);
+        }
+    }
+}
+
+impl Drop for QuadRenderer {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteBuffers(1, &self.vbo_instance);
+            gl::DeleteBuffers(1, &self.ebo);
+            gl::DeleteVertexArrays(1, &self.vao);
         }
     }
 }
@@ -1419,5 +1429,13 @@ impl Atlas {
         self.row_tallest = 0;
 
         Ok(())
+    }
+}
+
+impl Drop for Atlas {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteTextures(1, &self.id);
+        }
     }
 }

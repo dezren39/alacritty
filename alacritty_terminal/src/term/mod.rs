@@ -1626,7 +1626,7 @@ impl<T: EventListener> Handler for Term<T> {
             ansi::Mode::LineWrap => self.mode.insert(TermMode::LINE_WRAP),
             ansi::Mode::LineFeedNewLine => self.mode.insert(TermMode::LINE_FEED_NEW_LINE),
             ansi::Mode::Origin => self.mode.insert(TermMode::ORIGIN),
-            ansi::Mode::DECCOLM => self.deccolm(),
+            ansi::Mode::ColumnMode => self.deccolm(),
             ansi::Mode::Insert => self.mode.insert(TermMode::INSERT),
             ansi::Mode::BlinkingCursor => {
                 let style = self.cursor_style.get_or_insert(self.default_cursor_style);
@@ -1672,7 +1672,7 @@ impl<T: EventListener> Handler for Term<T> {
             ansi::Mode::LineWrap => self.mode.remove(TermMode::LINE_WRAP),
             ansi::Mode::LineFeedNewLine => self.mode.remove(TermMode::LINE_FEED_NEW_LINE),
             ansi::Mode::Origin => self.mode.remove(TermMode::ORIGIN),
-            ansi::Mode::DECCOLM => self.deccolm(),
+            ansi::Mode::ColumnMode => self.deccolm(),
             ansi::Mode::Insert => self.mode.remove(TermMode::INSERT),
             ansi::Mode::BlinkingCursor => {
                 let style = self.cursor_style.get_or_insert(self.default_cursor_style);
@@ -1968,14 +1968,19 @@ impl RenderableCursor {
     fn new<T>(term: &Term<T>) -> Self {
         // Cursor position.
         let vi_mode = term.mode().contains(TermMode::VI);
-        let point = if vi_mode { term.vi_mode_cursor.point } else { term.grid().cursor.point };
+        let mut point = if vi_mode {
+            term.vi_mode_cursor.point
+        } else {
+            let mut point = term.grid.cursor.point;
+            point.line += term.grid.display_offset();
+            point
+        };
 
         // Cursor shape.
-        let absolute_line = term.screen_lines() - point.line - 1;
-        let display_offset = term.grid().display_offset();
         let shape = if !vi_mode
-            && (!term.mode().contains(TermMode::SHOW_CURSOR) || absolute_line.0 < display_offset)
+            && (!term.mode().contains(TermMode::SHOW_CURSOR) || point.line >= term.screen_lines())
         {
+            point.line = Line(0);
             CursorShape::Hidden
         } else {
             term.cursor_style().shape

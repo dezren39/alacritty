@@ -25,12 +25,12 @@ use crate::cli::Options;
 pub use crate::config::bindings::{Action, Binding, BindingMode, Key, SearchAction, ViAction};
 #[cfg(test)]
 pub use crate::config::mouse::{ClickHandler, Mouse};
-use crate::config::ui_config::UIConfig;
+use crate::config::ui_config::UiConfig;
 
 /// Maximum number of depth for the configuration file imports.
 const IMPORT_RECURSION_LIMIT: usize = 5;
 
-pub type Config = TermConfig<UIConfig>;
+pub type Config = TermConfig<UiConfig>;
 
 /// Result from config loading.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -158,6 +158,9 @@ fn read_config(path: &Path, cli_config: Value) -> Result<Config> {
     // Deserialize to concrete type.
     let mut config = Config::deserialize(config_value)?;
     config.ui_config.config_paths = config_paths;
+
+    // Create key bindings for regex hints.
+    config.ui_config.generate_hint_bindings();
 
     Ok(config)
 }

@@ -42,9 +42,9 @@ use alacritty_terminal::tty;
 
 use crate::cli::Options as CLIOptions;
 use crate::clipboard::Clipboard;
-use crate::config;
-use crate::config::Config;
+use crate::config::{self, Config};
 use crate::daemon::start_daemon;
+use crate::display::hint::HintState;
 use crate::display::window::Window;
 use crate::display::{Display, DisplayUpdate};
 use crate::input::{self, ActionContext as _, FONT_SIZE_STEP};
@@ -61,13 +61,13 @@ pub const TYPING_SEARCH_DELAY: Duration = Duration::from_millis(500);
 const MAX_SEARCH_WHILE_TYPING: Option<usize> = Some(1000);
 
 /// Maximum number of search terms stored in the history.
-const MAX_HISTORY_SIZE: usize = 255;
+const MAX_SEARCH_HISTORY_SIZE: usize = 255;
 
 /// Events dispatched through the UI event loop.
 #[derive(Debug, Clone)]
 pub enum Event {
     TerminalEvent(TerminalEvent),
-    DPRChanged(f64, (u32, u32)),
+    DprChanged(f64, (u32, u32)),
     Scroll(Scroll),
     ConfigReload(PathBuf),
     Message(Message),
@@ -117,10 +117,6 @@ pub struct SearchState {
 }
 
 impl SearchState {
-    fn new() -> Self {
-        Self::default()
-    }
-
     /// Search regex text if a search is active.
     pub fn regex(&self) -> Option<&String> {
         self.history_index.and_then(|index| self.history.get(index))
@@ -440,7 +436,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         // Only create new history entry if the previous regex wasn't empty.
         if self.search_state.history.get(0).map_or(true, |regex| !regex.is_empty()) {
             self.search_state.history.push_front(String::new());
-            self.search_state.history.truncate(MAX_HISTORY_SIZE);
+            self.search_state.history.truncate(MAX_SEARCH_HISTORY_SIZE);
         }
 
         self.search_state.history_index = Some(0);
@@ -660,6 +656,16 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         }
     }
 
+    fn hint_state(&mut self) -> &mut HintState {
+        &mut self.display.hint_state
+    }
+
+    /// Process a new character for keyboard hints.
+    fn hint_input(&mut self, c: char) {
+        self.display.hint_state.keyboard_input(self.terminal, c);
+        *self.dirty = true;
+    }
+
     /// Toggle the vi mode status.
     #[inline]
     fn toggle_vi_mode(&mut self) {
@@ -730,6 +736,9 @@ impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
         // Unschedule pending timers.
         self.scheduler.unschedule(TimerId::DelayedSearch);
 
+        // Clear focused match.
+        self.search_state.focused_match = None;
+
         // The viewport reset logic is only needed for vi mode, since without it our origin is
         // always at the current display offset instead of at the vi cursor position which we need
         // to recover to.
@@ -740,9 +749,6 @@ impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
         // Reset display offset.
         self.terminal.scroll_display(Scroll::Delta(self.search_state.display_offset_delta));
         self.search_state.display_offset_delta = 0;
-
-        // Clear focused match.
-        self.search_state.focused_match = None;
 
         // Reset vi mode cursor.
         let mut origin = self.search_state.origin;
@@ -951,19 +957,19 @@ impl<N: Notify + OnResize> Processor<N> {
         cli_options: CLIOptions,
     ) -> Processor<N> {
         Processor {
-            notifier,
-            mouse: Default::default(),
-            received_count: 0,
-            suppress_chars: false,
-            modifiers: Default::default(),
             font_size: config.ui_config.font.size(),
-            config,
             message_buffer,
-            display,
-            event_queue: Vec::new(),
-            search_state: SearchState::new(),
             cli_options,
-            dirty: false,
+            notifier,
+            display,
+            config,
+            received_count: Default::default(),
+            suppress_chars: Default::default(),
+            search_state: Default::default(),
+            event_queue: Default::default(),
+            modifiers: Default::default(),
+            mouse: Default::default(),
+            dirty: Default::default(),
         }
     }
 
@@ -1045,7 +1051,7 @@ impl<N: Notify + OnResize> Processor<N> {
                 } => {
                     *control_flow = ControlFlow::Poll;
                     let size = (new_inner_size.width, new_inner_size.height);
-                    self.event_queue.push(Event::DPRChanged(scale_factor, size).into());
+                    self.event_queue.push(Event::DprChanged(scale_factor, size).into());
                     return;
                 },
                 // Transmute to extend lifetime, which exists only for `ScaleFactorChanged` event.
@@ -1138,7 +1144,7 @@ impl<N: Notify + OnResize> Processor<N> {
     {
         match event {
             GlutinEvent::UserEvent(event) => match event {
-                Event::DPRChanged(scale_factor, (width, height)) => {
+                Event::DprChanged(scale_factor, (width, height)) => {
                     let display_update_pending = &mut processor.ctx.display_update_pending;
 
                     // Push current font to update its DPR.
@@ -1381,6 +1387,9 @@ impl<N: Notify + OnResize> Processor<N> {
         #[cfg(target_os = "macos")]
         processor.ctx.window_mut().set_has_shadow(config.ui_config.background_opacity() >= 1.0);
 
+        // Update hint keys.
+        processor.ctx.display.hint_state.update_alphabet(config.ui_config.hints.alphabet());
+
         *processor.ctx.config = config;
 
         // Update cursor blinking.
@@ -1400,12 +1409,14 @@ impl<N: Notify + OnResize> Processor<N> {
     {
         // Compute cursor positions before resize.
         let num_lines = terminal.screen_lines();
+        let vi_mode = terminal.mode().contains(TermMode::VI);
         let cursor_at_bottom = terminal.grid().cursor.point.line + 1 == num_lines;
-        let origin_at_bottom = if terminal.mode().contains(TermMode::VI) {
+        let origin_at_bottom = if vi_mode {
             terminal.vi_mode_cursor.point.line == num_lines - 1
         } else {
             self.search_state.direction == Direction::Left
         };
+        let old_display_offset = terminal.grid().display_offset();
 
         self.display.handle_update(
             terminal,
@@ -1416,14 +1427,24 @@ impl<N: Notify + OnResize> Processor<N> {
             display_update_pending,
         );
 
-        // Scroll to make sure search origin is visible and content moves as little as possible.
-        if !old_is_searching && self.search_state.history_index.is_some() {
+        let new_is_searching = self.search_state.history_index.is_some();
+        if !old_is_searching && new_is_searching {
+            // Scroll on search start to make sure origin is visible with minimal viewport motion.
             let display_offset = terminal.grid().display_offset();
             if display_offset == 0 && cursor_at_bottom && !origin_at_bottom {
                 terminal.scroll_display(Scroll::Delta(1));
             } else if display_offset != 0 && origin_at_bottom {
                 terminal.scroll_display(Scroll::Delta(-1));
             }
+        } else if old_is_searching
+            && !new_is_searching
+            && old_display_offset == 0
+            && cursor_at_bottom
+            && origin_at_bottom
+            && vi_mode
+        {
+            // Pull down the vi cursor if it was moved up when the search was started.
+            terminal.vi_mode_cursor.point.line += 1;
         }
     }
 

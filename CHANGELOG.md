@@ -9,23 +9,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Packaging
 
-- Updated shell completions
+- Minimum Rust version has been bumped to 1.45.0
 
 ### Added
 
 - IME composition preview not appearing on Windows
 - Support for Sixel protocol
 - Support for iTerm2 inline images protocol
+- Synchronized terminal updates using `DCS = 1 s ST`/`DCS = 2 s ST`
+- Regex terminal hints ([see features.md](./docs/features.md#hints))
+
+### Fixed
+
+- Alacritty failing to start on X11 with invalid DPI reported by XRandr
+- Text selected after search without any match
+- Incorrect vi cursor position after leaving search
+
+### Removed
+
+- Config field `visual_bell`, you should use `bell` instead
+
+## 0.7.2
+
+### Packaging
+
+- Updated shell completions
 
 ### Fixed
 
 - Crash due to assertion failure on 32-bit architectures
 - Segmentation fault on shutdown with Wayland
 - Incorrect estimated DPR with Wayland
-
-### Removed
-
-- Config field `visual_bell`, you should use `bell` instead
+- Consecutive clipboard stores dropped on Wayland until the application is refocused
 
 ## 0.7.1
 

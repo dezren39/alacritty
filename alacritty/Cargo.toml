@@ -34,9 +34,8 @@ copypasta = { version = "0.7.0", default-features = false }
 libc = "0.2"
 unicode-width = "0.1"
 bitflags = "1"
-dirs = "2.0.2"
+dirs = "3.0.1"
 memoffset = "0.6.1"
-lazy_static = "1.4.0"
 
 [build-dependencies]
 gl_generator = "0.14.0"

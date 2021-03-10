@@ -76,6 +76,7 @@ impl fmt::Display for Error {
 }
 
 /// Commands found in the data stream.
+#[derive(Debug)]
 enum SixelCommand {
     /// Specifies a repeat count before a sixel.
     ///
@@ -113,6 +114,7 @@ enum SixelCommand {
 }
 
 /// Parser for commands found in the picture definition.
+#[derive(Debug)]
 struct CommandParser {
     /// Active command.
     command: SixelCommand,
@@ -248,7 +250,7 @@ impl Sixel {
 }
 
 /// Parser of the picture definition in a Sixel data stream.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Parser {
     /// Active command to be parsed.
     command_parser: Option<CommandParser>,
