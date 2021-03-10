@@ -299,7 +299,7 @@ impl<T> Term<T> {
         self.event_proxy.send_event(Event::MouseCursorDirty);
     }
 
-    pub fn new<C>(config: &Config<C>, size: SizeInfo, event_proxy: T) -> Self {
+    pub fn new<C>(config: &Config<C>, size: SizeInfo, event_proxy: T) -> Term<T> {
         let num_cols = size.cols;
         let num_lines = size.screen_lines;
 
