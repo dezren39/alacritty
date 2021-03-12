@@ -1782,6 +1782,16 @@ impl<T: EventListener> Handler for Term<T> {
             }
         }
 
+        let graphic = match graphic.resized(
+            self.cell_width,
+            self.cell_height,
+            self.cell_width * self.cols().0,
+            self.cell_height * self.screen_lines().0,
+        ) {
+            Some(graphic) => graphic,
+            None => return,
+        };
+
         if graphic.width > MAX_GRAPHIC_DIMENSIONS.0 || graphic.height > MAX_GRAPHIC_DIMENSIONS.1 {
             return;
         }
