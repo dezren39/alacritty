@@ -68,6 +68,8 @@ wayland = ["copypasta/wayland", "glutin/wayland", "wayland-client"]
 nightly = []
 
 [package.metadata.deb]
+extended-description = "Alacritty terminal."
+revision = "2"
 assets = [
   [ "../target/release/alacritty", "usr/bin/", "755" ],
   [ "../target/terminfo/a/alacritty", "etc/terminfo/a/", "644" ]
