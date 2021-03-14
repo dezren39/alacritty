@@ -7,7 +7,7 @@ use crate::renderer;
 /// Number of elements of the `textures[]` uniform.
 ///
 /// If the file `graphics.f.glsl` is modified, this value has to be updated.
-pub(super) const TEXTURES_ARRAY_SIZE: usize = 32;
+pub(super) const TEXTURES_ARRAY_SIZE: usize = 16;
 
 /// Sides where the vertex is located.
 ///
