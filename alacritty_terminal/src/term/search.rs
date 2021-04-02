@@ -212,7 +212,8 @@ impl<T> Term<T> {
 
         let mut point = iter.point();
 
-        loop {
+        let loop_start = std::time::Instant::now();
+        while loop_start.elapsed().as_secs() < 2 {
             // Convert char to array of bytes.
             let mut buf = [0; 4];
             let utf8_len = c.encode_utf8(&mut buf).len();
