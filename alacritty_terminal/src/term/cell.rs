@@ -58,6 +58,9 @@ struct CellExtra {
 
     #[serde(skip)]
     graphic: Option<Box<GraphicCell>>,
+
+    #[serde(skip)]
+    bookmark: bool,
 }
 
 /// Content and attributes of a single cell in the terminal grid.
@@ -118,6 +121,17 @@ impl Cell {
         extra.graphic = Some(Box::new(graphic_cell));
 
         self.flags_mut().insert(Flags::GRAPHICS);
+    }
+
+    #[inline]
+    pub fn set_bookmark(&mut self) {
+        let mut extra = self.extra.get_or_insert_with(Default::default);
+        extra.bookmark = true;
+    }
+
+    #[inline]
+    pub fn bookmark(&self) -> bool {
+        self.extra.as_deref().map(|extra| extra.bookmark).unwrap_or(false)
     }
 }
 

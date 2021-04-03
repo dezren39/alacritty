@@ -195,6 +195,10 @@ pub enum Action {
     /// Start a backward buffer search.
     SearchBackward,
 
+    BookmarkPrev,
+
+    BookmarkNext,
+
     /// No action.
     None,
 }

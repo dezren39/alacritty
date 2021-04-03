@@ -1843,6 +1843,12 @@ impl<T: EventListener> Handler for Term<T> {
             self.carriage_return();
         }
     }
+
+    #[inline]
+    fn add_bookmark(&mut self) {
+        let cursor = self.grid.cursor.point;
+        self.grid[cursor.line][Column(0)].set_bookmark();
+    }
 }
 
 /// Terminal version for escape sequence reports.

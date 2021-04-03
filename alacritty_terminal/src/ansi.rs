@@ -481,6 +481,9 @@ pub trait Handler {
 
     /// Insert a new graphic item.
     fn insert_graphic(&mut self, _data: GraphicData, _palette: Option<Vec<Rgb>>) {}
+
+    /// Add a mark at the current cursor position.
+    fn add_bookmark(&mut self) {}
 }
 
 /// Terminal cursor configuration.
@@ -1130,6 +1133,11 @@ where
                 if let Some(graphic) = osc1337::parse(params) {
                     self.handler.insert_graphic(graphic, None);
                 }
+            },
+
+            // Bookmarks
+            b"MARK" => {
+                self.handler.add_bookmark();
             },
 
             _ => unhandled(params),

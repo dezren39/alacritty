@@ -420,6 +420,16 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     #[inline]
+    fn bookmark_prev(&mut self) {
+        self.jump_to_bookmark(true);
+    }
+
+    #[inline]
+    fn bookmark_next(&mut self) {
+        self.jump_to_bookmark(false);
+    }
+
+    #[inline]
     fn start_search(&mut self, direction: Direction) {
         // Only create new history entry if the previous regex wasn't empty.
         if self.search_state.history.get(0).map_or(true, |regex| !regex.is_empty()) {
@@ -795,6 +805,26 @@ impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
 
         // Clear focused match.
         self.search_state.focused_match = None;
+    }
+
+    fn jump_to_bookmark(&mut self, prev: bool) {
+        let grid = self.terminal.grid();
+        let display_offset = grid.display_offset() as i32;
+
+        let valid_range = grid.topmost_line()..grid.bottommost_line();
+        let direction = if prev { -1 } else { 1 };
+
+        let mut line = Line(-display_offset + direction);
+        while valid_range.contains(&line) {
+            if grid[line][Column(0)].bookmark() {
+                let scroll = Scroll::Delta(-line.0 - display_offset);
+                self.terminal.scroll_display(scroll);
+                *self.dirty = true;
+                return;
+            }
+
+            line += direction;
+        }
     }
 
     /// Update the cursor blinking state.
