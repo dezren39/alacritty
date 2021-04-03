@@ -69,7 +69,7 @@ nightly = []
 
 [package.metadata.deb]
 extended-description = "Alacritty terminal."
-revision = "4"
+revision = "5"
 assets = [
   [ "../target/release/alacritty", "usr/bin/", "755" ],
   [ "../target/terminfo/a/alacritty", "etc/terminfo/a/", "644" ]
