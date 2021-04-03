@@ -91,6 +91,8 @@ pub trait ActionContext<T: EventListener> {
     fn mouse_mode(&self) -> bool;
     fn clipboard_mut(&mut self) -> &mut Clipboard;
     fn scheduler_mut(&mut self) -> &mut Scheduler;
+    fn bookmark_next(&mut self) {}
+    fn bookmark_prev(&mut self) {}
     fn start_search(&mut self, _direction: Direction) {}
     fn confirm_search(&mut self) {}
     fn cancel_search(&mut self) {}
@@ -285,6 +287,8 @@ impl<T: EventListener> Execute<T> for Action {
             Action::IncreaseFontSize => ctx.change_font_size(FONT_SIZE_STEP),
             Action::DecreaseFontSize => ctx.change_font_size(FONT_SIZE_STEP * -1.),
             Action::ResetFontSize => ctx.reset_font_size(),
+            Action::BookmarkPrev => ctx.bookmark_prev(),
+            Action::BookmarkNext => ctx.bookmark_next(),
             Action::ScrollPageUp => {
                 // Move vi mode cursor.
                 let term = ctx.terminal_mut();

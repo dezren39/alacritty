@@ -116,6 +116,9 @@ pub struct CellExtra {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     graphics: Option<GraphicsCell>,
+
+    #[serde(skip)]
+    bookmark: bool,
 }
 
 /// Content and attributes of a single cell in the terminal grid.
@@ -233,6 +236,17 @@ impl Cell {
     #[inline]
     pub fn hyperlink(&self) -> Option<Hyperlink> {
         self.extra.as_ref()?.hyperlink.clone()
+    }
+
+    #[inline]
+    pub fn set_bookmark(&mut self) {
+        let extra = self.extra.get_or_insert(Default::default());
+        Arc::make_mut(extra).bookmark = true;
+    }
+
+    #[inline]
+    pub fn bookmark(&self) -> bool {
+        self.extra.as_deref().map(|extra| extra.bookmark).unwrap_or(false)
     }
 }
 

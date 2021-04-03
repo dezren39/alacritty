@@ -2196,6 +2196,12 @@ impl<T: EventListener> Handler for Term<T> {
         // Add the graphic data to the pending queue.
         self.graphics.pending.push(GraphicData { id: graphic_id, ..graphic });
     }
+
+    #[inline]
+    fn add_bookmark(&mut self) {
+        let cursor = self.grid.cursor.point;
+        self.grid[cursor.line][Column(0)].set_bookmark();
+    }
 }
 
 /// Terminal version for escape sequence reports.
