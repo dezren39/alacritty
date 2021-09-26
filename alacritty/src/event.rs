@@ -949,17 +949,29 @@ impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
     }
 
     fn jump_to_bookmark(&mut self, prev: bool) {
+        let vi_mode = self.terminal.mode().contains(TermMode::VI);
         let grid = self.terminal.grid();
         let display_offset = grid.display_offset() as i32;
 
         let valid_range = grid.topmost_line()..grid.bottommost_line();
         let direction = if prev { -1 } else { 1 };
 
-        let mut line = Line(-display_offset + direction);
+        let mut line;
+        if vi_mode {
+            line = Line(self.terminal.vi_mode_cursor.point.line.0 + direction);
+        } else {
+            line = Line(-display_offset + direction);
+        }
+
         while valid_range.contains(&line) {
-            if grid[line][Column(0)].bookmark() {
-                let scroll = Scroll::Delta(-line.0 - display_offset);
-                self.terminal.scroll_display(scroll);
+            if grid[line].bookmark() {
+                if vi_mode {
+                    self.terminal.vi_goto_point(Point::new(line, Column(0)));
+                } else {
+                    let scroll = Scroll::Delta(-line.0 - display_offset);
+                    self.terminal.scroll_display(scroll);
+                }
+
                 *self.dirty = true;
                 return;
             }

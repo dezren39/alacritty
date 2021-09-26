@@ -181,6 +181,13 @@ impl<'a, T> IntoIterator for &'a Row<T> {
     }
 }
 
+impl Row<crate::term::cell::Cell> {
+    #[inline]
+    pub fn bookmark(&self) -> bool {
+        self[Column(0)].bookmark()
+    }
+}
+
 impl<'a, T> IntoIterator for &'a mut Row<T> {
     type IntoIter = slice::IterMut<'a, T>;
     type Item = &'a mut T;
