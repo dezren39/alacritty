@@ -483,7 +483,7 @@ pub trait Handler {
     fn insert_graphic(&mut self, _data: GraphicData, _palette: Option<Vec<Rgb>>) {}
 
     /// Add a mark at the current cursor position.
-    fn add_bookmark(&mut self) {}
+    fn add_bookmark(&mut self, _: char) {}
 }
 
 /// Terminal cursor configuration.
@@ -1137,7 +1137,14 @@ where
 
             // Bookmarks
             b"MARK" => {
-                self.handler.add_bookmark();
+                let chr = params
+                    .get(1)
+                    .and_then(|param| str::from_utf8(param).ok())
+                    .and_then(|s| s.parse().ok())
+                    .and_then(std::char::from_u32)
+                    .unwrap_or(' ');
+
+                self.handler.add_bookmark(chr);
             },
 
             _ => unhandled(params),

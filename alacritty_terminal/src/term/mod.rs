@@ -1845,9 +1845,10 @@ impl<T: EventListener> Handler for Term<T> {
     }
 
     #[inline]
-    fn add_bookmark(&mut self) {
-        let cursor = self.grid.cursor.point;
-        self.grid[cursor.line][Column(0)].set_bookmark();
+    fn add_bookmark(&mut self, chr: char) {
+        self.grid.cursor.template.flags.insert(Flags::BOOKMARK);
+        self.input(chr);
+        self.grid.cursor.template.flags.remove(Flags::BOOKMARK);
     }
 }
 

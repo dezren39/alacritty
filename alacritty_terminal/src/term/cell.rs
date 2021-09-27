@@ -26,6 +26,7 @@ bitflags! {
         const LEADING_WIDE_CHAR_SPACER  = 0b0000_0100_0000_0000;
         const DOUBLE_UNDERLINE          = 0b0000_1000_0000_0000;
         const GRAPHICS                  = 0b0001_0000_0000_0000;
+        const BOOKMARK                  = 0b1000_0000_0000_0000;
     }
 }
 
@@ -58,9 +59,6 @@ struct CellExtra {
 
     #[serde(skip)]
     graphic: Option<Box<GraphicCell>>,
-
-    #[serde(skip)]
-    bookmark: bool,
 }
 
 /// Content and attributes of a single cell in the terminal grid.
@@ -121,17 +119,6 @@ impl Cell {
         extra.graphic = Some(Box::new(graphic_cell));
 
         self.flags_mut().insert(Flags::GRAPHICS);
-    }
-
-    #[inline]
-    pub fn set_bookmark(&mut self) {
-        let mut extra = self.extra.get_or_insert_with(Default::default);
-        extra.bookmark = true;
-    }
-
-    #[inline]
-    pub fn bookmark(&self) -> bool {
-        self.extra.as_deref().map(|extra| extra.bookmark).unwrap_or(false)
     }
 }
 

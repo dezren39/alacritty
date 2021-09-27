@@ -175,8 +175,15 @@ impl<T> Row<T> {
 
 impl Row<crate::term::cell::Cell> {
     #[inline]
-    pub fn bookmark(&self) -> bool {
-        self[Column(0)].bookmark()
+    pub fn bookmark(&self) -> Option<Column> {
+        use crate::term::cell::Flags;
+        self.inner.iter().take(self.occ).enumerate().find_map(|(column, cell)| {
+            if cell.flags().contains(Flags::BOOKMARK) {
+                Some(Column(column))
+            } else {
+                None
+            }
+        })
     }
 }
 
