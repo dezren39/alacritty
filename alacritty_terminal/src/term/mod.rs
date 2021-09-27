@@ -2203,6 +2203,19 @@ impl<T: EventListener> Handler for Term<T> {
         self.input(chr);
         self.grid.cursor.template.flags.remove(Flags::BOOKMARK);
     }
+
+    #[inline]
+    fn jump_bookmark(&mut self) {
+        // Check if the visible grid contains any bookmark before the line at
+        // the cursor.
+
+        let point = (0..self.grid.cursor.point.line.0)
+            .rev()
+            .find_map(|line| self.grid[Line(line)].bookmark().map(|c| Point::new(Line(line), c)))
+            .unwrap_or_else(|| Point::new(Line(0), Column(0)));
+
+        self.grid.cursor.point = point;
+    }
 }
 
 /// Terminal version for escape sequence reports.
