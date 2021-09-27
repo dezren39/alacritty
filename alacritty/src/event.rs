@@ -964,9 +964,9 @@ impl<'a, N: Notify + 'a, T: EventListener> ActionContext<'a, N, T> {
         }
 
         while valid_range.contains(&line) {
-            if grid[line].bookmark() {
+            if let Some(column) = grid[line].bookmark() {
                 if vi_mode {
-                    self.terminal.vi_goto_point(Point::new(line, Column(0)));
+                    self.terminal.vi_goto_point(Point::new(line, column));
                 } else {
                     let scroll = Scroll::Delta(-line.0 - display_offset);
                     self.terminal.scroll_display(scroll);

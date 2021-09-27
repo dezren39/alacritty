@@ -183,8 +183,14 @@ impl<'a, T> IntoIterator for &'a Row<T> {
 
 impl Row<crate::term::cell::Cell> {
     #[inline]
-    pub fn bookmark(&self) -> bool {
-        self[Column(0)].bookmark()
+    pub fn bookmark(&self) -> Option<Column> {
+        self.inner.iter().take(self.occ).enumerate().find_map(|(column, cell)| {
+            if cell.flags().contains(Flags::BOOKMARK) {
+                Some(Column(column))
+            } else {
+                None
+            }
+        })
     }
 }
 

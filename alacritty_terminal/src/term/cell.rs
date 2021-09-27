@@ -11,7 +11,7 @@ use crate::index::Column;
 
 bitflags! {
     #[derive(Serialize, Deserialize)]
-    pub struct Flags: u16 {
+    pub struct Flags: u32 {
         const INVERSE                   = 0b0000_0000_0000_0001;
         const BOLD                      = 0b0000_0000_0000_0010;
         const ITALIC                    = 0b0000_0000_0000_0100;
@@ -29,7 +29,8 @@ bitflags! {
         const UNDERCURL                 = 0b0001_0000_0000_0000;
         const DOTTED_UNDERLINE          = 0b0010_0000_0000_0000;
         const DASHED_UNDERLINE          = 0b0100_0000_0000_0000;
-        const GRAPHICS                  = 0b1000_0000_0000_0000;
+        const GRAPHICS                  = 1 << 24;
+        const BOOKMARK                  = 1 << 25;
         const ALL_UNDERLINES            = Self::UNDERLINE.bits | Self::DOUBLE_UNDERLINE.bits
                                         | Self::UNDERCURL.bits | Self::DOTTED_UNDERLINE.bits
                                         | Self::DASHED_UNDERLINE.bits;
