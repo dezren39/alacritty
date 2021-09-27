@@ -484,6 +484,9 @@ pub trait Handler {
 
     /// Add a mark at the current cursor position.
     fn add_bookmark(&mut self, _: char) {}
+
+    /// Jump to the last bookmark before the cursor.
+    fn jump_bookmark(&mut self) {}
 }
 
 /// Terminal cursor configuration.
@@ -1135,16 +1138,23 @@ where
                 }
             },
 
-            // Bookmarks
+            // Bookmarks.
+            //
+            // If params[1] == 0, jump to the previous bookmark.
             b"MARK" => {
-                let chr = params
-                    .get(1)
-                    .and_then(|param| str::from_utf8(param).ok())
-                    .and_then(|s| s.parse().ok())
-                    .and_then(std::char::from_u32)
-                    .unwrap_or(' ');
+                let param = params.get(1);
 
-                self.handler.add_bookmark(chr);
+                if matches!(param, Some([b'0'])) {
+                    self.handler.jump_bookmark();
+                } else {
+                    let chr = param
+                        .and_then(|param| str::from_utf8(param).ok())
+                        .and_then(|s| s.parse().ok())
+                        .and_then(std::char::from_u32)
+                        .unwrap_or(' ');
+
+                    self.handler.add_bookmark(chr);
+                }
             },
 
             _ => unhandled(params),
