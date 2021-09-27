@@ -482,8 +482,11 @@ pub trait Handler {
     /// Insert a new graphic item.
     fn insert_graphic(&mut self, _data: GraphicData, _palette: Option<Vec<Rgb>>) {}
 
-    /// Add a mark at the current cursor position.
-    fn add_bookmark(&mut self, _: char) {}
+    /// Add the bookmark flag for the next characters added to the grid.
+    fn start_bookmark(&mut self) {}
+
+    /// Stop the bookmark flag.
+    fn finish_bookmark(&mut self) {}
 
     /// Jump to the last bookmark before the cursor.
     fn jump_bookmark(&mut self) {}
@@ -1140,21 +1143,15 @@ where
 
             // Bookmarks.
             //
-            // If params[1] == 0, jump to the previous bookmark.
-            b"MARK" => {
-                let param = params.get(1);
-
-                if matches!(param, Some([b'0'])) {
-                    self.handler.jump_bookmark();
-                } else {
-                    let chr = param
-                        .and_then(|param| str::from_utf8(param).ok())
-                        .and_then(|s| s.parse().ok())
-                        .and_then(std::char::from_u32)
-                        .unwrap_or(' ');
-
-                    self.handler.add_bookmark(chr);
-                }
+            // params[1]:
+            //      0: jump to the previous bookmark.
+            //      1: add bookmark flag for the next characters
+            //      2: stop adding bookmark flag.
+            b"MARK" => match params.get(1) {
+                Some([b'0']) => self.handler.jump_bookmark(),
+                Some([b'1']) => self.handler.start_bookmark(),
+                Some([b'2']) => self.handler.finish_bookmark(),
+                _ => (),
             },
 
             _ => unhandled(params),
