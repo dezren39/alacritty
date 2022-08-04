@@ -29,6 +29,11 @@ regex-automata = "0.1.9"
 dirs = "4.0.0"
 smallvec = { version = "1.9.0", features = ["serde"] }
 
+[dependencies.image]
+version = "0.24.3"
+default-features = false
+features = ["gif", "jpeg", "ico", "png", "pnm", "webp", "bmp"]
+
 [target.'cfg(unix)'.dependencies]
 nix = "0.22.0"
 signal-hook = "0.3.10"
